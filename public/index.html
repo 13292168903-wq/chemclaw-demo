@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChemClaw - 面向计算化学科研训练的多智能体教学助教</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf8', 100: '#ccfbeb', 200: '#9af5d6',
+              300: '#5fe8be', 400: '#2dd4a0', 500: '#0f766e',
+              600: '#0d6b63', 700: '#0b4f4a', 800: '#0a3d39', 900: '#08322e'
+            },
+            surface: { DEFAULT: '#ffffff', soft: '#f8fafb', muted: '#f1f5f9' },
+            ink: { DEFAULT: '#17202a', soft: '#344054', muted: '#667085' }
+          },
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/styles.css">
+  <!-- Mol* (molstar) — Next-gen molecular viewer from RCSB PDB -->
+  <link rel="stylesheet" href="/vendor/molstar.css">
+  <script type="text/javascript" src="/vendor/molstar.js"></script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-ink dark:text-slate-100 min-h-screen font-sans antialiased transition-colors duration-300" data-role="teacher">
+
+  <!-- ===== Header ===== -->
+  <header class="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl">
+    <div class="max-w-[1680px] mx-auto flex items-center justify-between gap-4 px-4 py-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/20" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="11" stroke="white" stroke-width="2"/><circle cx="10" cy="11" r="3.5" fill="white" opacity=".8"/><circle cx="18" cy="17" r="3" fill="white" opacity=".5"/></svg>
+        </div>
+        <div>
+          <p class="text-[11px] font-bold tracking-wide text-brand-500 dark:text-brand-400 uppercase">🦞 OpenClaw 多智能体</p>
+          <h1 class="text-lg font-extrabold leading-tight">ChemClaw</h1>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <!-- Theme Toggle -->
+        <button id="themeToggle" type="button" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-ink-muted dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Toggle theme">
+          <svg class="w-4 h-4 dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="w-4 h-4 hidden dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </button>
+
+        <!-- Chat Toggle -->
+        <button id="chatToggle" type="button" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-bold text-ink-soft dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">对话</button>
+
+        <!-- Role Switch -->
+        <div class="grid grid-cols-2 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-white dark:bg-slate-800">
+          <button class="role-btn px-3 py-2 text-xs font-bold text-ink-muted dark:text-slate-400 transition-colors" data-role="teacher">教师端</button>
+          <button class="role-btn px-3 py-2 text-xs font-bold text-ink-muted dark:text-slate-400 transition-colors" data-role="student">学生端</button>
+        </div>
+
+        <!-- Status -->
+        <div id="agentStatus" class="px-3 py-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-ink-muted dark:text-slate-400 min-w-[140px] text-center">连接中...</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Main Workspace ===== -->
+  <main class="workspace max-w-[1680px] mx-auto p-4">
+    <!-- Left: Input Panel -->
+    <section class="panel input-panel" id="inputPanel">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-extrabold">数据与报告</h2>
+        <button id="loadSampleButton" type="button" class="px-2.5 py-1.5 text-xs font-bold rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-ink-soft dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">加载样例</button>
+      </div>
+
+      <!-- Scenario Card -->
+      <div class="mb-3 p-3 rounded-lg border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/20">
+        <p class="text-[10px] font-bold tracking-wide text-brand-600 dark:text-brand-400 uppercase mb-1">课程场景</p>
+        <p class="text-sm font-bold text-ink dark:text-slate-200">计算化学科研实验</p>
+        <p class="text-xs text-ink-soft dark:text-slate-400 mt-1 leading-relaxed">解析 Gaussian / ORCA 输出文件，理解过渡态、能垒与前线轨道。</p>
+      </div>
+
+      <!-- File Upload -->
+      <label class="field-label">计算输出文件</label>
+      <input id="datasetFile" type="file" accept=".txt,.log,.out,.csv,.xyz,.dat" class="file-input mb-2">
+
+      <label class="field-label">原始计算数据</label>
+      <textarea id="datasetText" spellcheck="false" class="textarea-main flex-1 min-h-[160px]"></textarea>
+
+      <label class="field-label">分子坐标（XYZ，可选）</label>
+      <input id="moleculeFile" type="file" accept=".xyz,.txt" class="file-input mb-1">
+      <textarea id="moleculeText" spellcheck="false" class="textarea-small" placeholder="12&#10;benzene&#10;C 1.396 0.000 0.000&#10;..."></textarea>
+
+      <!-- Analyze Button -->
+      <button id="analyzeButton" type="button" class="btn-primary mt-3">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5"/></svg>
+        分析数据
+      </button>
+      <p class="pipeline-hint">智能体 1 &rarr; 2 &rarr; 3 : 解析 &middot; 解释 &middot; 教学</p>
+
+      <hr class="border-slate-200 dark:border-slate-800 my-3">
+
+      <!-- Grading Section -->
+      <label class="field-label">学生实验报告</label>
+      <textarea id="studentReport" spellcheck="false" class="textarea-report"></textarea>
+
+      <button id="gradeButton" type="button" class="btn-secondary mt-2">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z"/></svg>
+        批改报告
+      </button>
+      <p class="pipeline-hint">智能体 4 : 基于 Rubric 的评估</p>
+    </section>
+
+    <!-- Center: Analysis Panel -->
+    <section class="panel analysis-panel" id="analysisPanel">
+      <!-- Tab Bar -->
+      <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <div>
+          <h2 class="text-sm font-extrabold">科研工作台</h2>
+          <p id="roleCaption" class="text-[11px] text-ink-muted dark:text-slate-500 mt-0.5">教师视角：学习目标、评分标准、教学价值</p>
+        </div>
+        <div class="tab-bar" role="tablist">
+          <button class="tab active" data-view="overview">概览</button>
+          <button class="tab" data-view="agents">智能体</button>
+          <button class="tab" data-view="training">训练</button>
+          <button class="tab" data-view="grading">批改</button>
+          <button class="tab" data-view="architecture">架构</button>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state">
+        <div class="molecule-scene" aria-hidden="true">
+          <span class="atom a1"></span><span class="atom a2"></span><span class="atom a3"></span>
+          <span class="bond b1"></span><span class="bond b2"></span>
+        </div>
+        <h2 class="text-xl font-bold text-ink dark:text-slate-200">上传数据或加载样例以开始</h2>
+        <p class="text-ink-muted dark:text-slate-500 max-w-md text-center text-sm">后端编排四个智能体协同工作：数据解析 &rarr; 化学解释 &rarr; 教学设计 &rarr; 批改反馈。</p>
+      </div>
+
+      <!-- Result View -->
+      <div id="resultView" class="result-view hidden">
+        <!-- Hero -->
+        <div class="hero-card">
+          <div class="min-w-0">
+            <p class="eyebrow" id="resultMode">local-demo</p>
+            <h2 id="projectTitle" class="text-xl font-extrabold truncate"></h2>
+            <p id="summary" class="text-sm text-ink-soft dark:text-slate-400 mt-1 line-clamp-2"></p>
+          </div>
+          <div class="score-dial">
+            <span id="scoreValue" class="text-3xl font-black text-brand-500">--</span>
+            <small id="scoreLabel" class="text-[10px] font-bold text-ink-muted dark:text-slate-500">报告得分</small>
+          </div>
+        </div>
+
+        <!-- Metrics -->
+        <div id="metricsGrid" class="metrics-grid"></div>
+
+        <!-- Tab Pages -->
+        <div class="view-page active" id="overviewPage">
+          <div class="overview-grid">
+            <div class="card-section">
+              <div class="section-head">
+                <h3>3D 分子结构</h3>
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                  <span id="openclawDataBadge" class="openclaw-skill-tag hidden" style="font-size:10px">🦞 OpenClaw 提供结构数据</span>
+                  <select id="structureSelect" class="compact-select" aria-label="选择结构帧"></select>
+                  <button id="playFramesButton" type="button" class="mini-btn">播放帧序列</button>
+                </div>
+              </div>
+              <div id="moleculeViewer" class="molecule-viewer-3d"></div>
+              <div id="viewerInfoBar" class="viewer-info-bar">
+                <span id="viewerEngine" class="viewer-engine-tag">Mol* Renderer</span>
+                <span id="viewerAtomCount" class="viewer-stat"></span>
+                <span id="viewerBondCount" class="viewer-stat"></span>
+              </div>
+            </div>
+            <div class="card-section">
+              <div class="section-head"><h3>相对能量曲线</h3><span class="unit-label">kcal mol&sup1;</span></div>
+              <div id="energyChart" class="energy-chart"></div>
+            </div>
+          </div>
+
+          <!-- File Details -->
+          <div class="card-section mt-3">
+            <div class="section-head"><h3>输入文件摘要</h3><span class="unit-label">智能体 1 提取</span></div>
+            <div id="fileDetailsGrid" class="details-grid"></div>
+          </div>
+
+          <!-- Basic Info + Optimization + Vibration -->
+          <div class="detail-cards mt-3">
+            <div class="card-section">
+              <div class="section-head"><h3>计算信息</h3></div>
+              <div id="basicInfoGrid" class="details-grid"></div>
+            </div>
+            <div class="card-section optimization-card">
+              <div class="section-head">
+                <h3>优化轨迹查看</h3>
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                  <button id="optPrevButton" type="button" class="mini-btn">上一帧</button>
+                  <select id="optimizationStepSelect" class="compact-select" aria-label="选择优化步"></select>
+                  <button id="optNextButton" type="button" class="mini-btn">下一帧</button>
+                  <button id="optPlayButton" type="button" class="mini-btn">播放</button>
+                </div>
+              </div>
+              <div id="optimizationMeta" class="opt-meta"></div>
+              <div id="optimizationChart" class="mini-chart"></div>
+              <div id="optimizationWarning" class="opt-warning"></div>
+            </div>
+            <div class="card-section vibration-card">
+              <div class="section-head">
+                <h3>振动模式与红外光谱</h3>
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                  <select id="vibrationSelect" class="compact-select" aria-label="选择振动模式"></select>
+                  <button id="playVibrationButton" type="button" class="mini-btn">播放振动</button>
+                </div>
+              </div>
+              <div id="vibrationChart" class="mini-chart"></div>
+            </div>
+          </div>
+
+          <!-- Learning Goals -->
+          <div id="learningGoals" class="goals-grid mt-3"></div>
+
+          <!-- OpenClaw AI Interpretation -->
+          <div id="openclawSection" class="openclaw-ai-section mt-3 hidden">
+            <div class="section-head">
+              <h3>🦞 OpenClaw AI 解读</h3>
+              <span id="openclawMeta" class="unit-label"></span>
+            </div>
+            <div id="openclawContent" class="openclaw-content"></div>
+          </div>
+        </div>
+
+        <!-- Agents Page -->
+        <div class="view-page" id="agentsPage">
+          <div id="agentFindings" class="cards-grid"></div>
+        </div>
+
+        <!-- Training Page -->
+        <div class="view-page" id="trainingPage">
+          <div class="section-head"><h3>个性化训练</h3><span class="unit-label">智能体 3 生成</span></div>
+          <div id="quizList" class="cards-grid"></div>
+          <div class="section-head mt-4"><h3>科研建议</h3><span class="unit-label">适用于科研轮转训练</span></div>
+          <div id="researchSuggestions" class="cards-grid"></div>
+        </div>
+
+        <!-- Grading Page -->
+        <div class="view-page" id="gradingPage">
+          <div id="rubricTable" class="rubric-table teacher-only"></div>
+          <div id="studentFeedback" class="student-feedback"></div>
+          <!-- OpenClaw Grading Feedback -->
+          <div id="openclawGradeSection" class="openclaw-ai-section mt-3 hidden">
+            <div class="section-head">
+              <h3>🦞 OpenClaw 批改反馈</h3>
+              <span id="openclawGradeMeta" class="unit-label"></span>
+            </div>
+            <div id="openclawGradeContent" class="openclaw-content"></div>
+          </div>
+          <div class="cards-grid mt-3">
+            <div class="card-section">
+              <h3 class="text-sm font-bold mb-2">批改反馈</h3>
+              <div id="gradingContent"></div>
+            </div>
+            <div class="card-section teacher-only">
+              <h3 class="text-sm font-bold mb-2">文献基准</h3>
+              <div id="literatureBenchmarks"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Architecture Page -->
+        <div class="view-page" id="architecturePage">
+          <div id="architectureLanes" class="arch-lanes teacher-only"></div>
+          <div class="card-section">
+            <h3 class="text-sm font-bold mb-2">产品路线图</h3>
+            <ul id="nextSteps" class="list-disc pl-5 text-ink-soft dark:text-slate-400 space-y-1 text-sm"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Chat Panel -->
+    <aside class="panel chat-panel collapsed" id="chatPanel">
+      <h2 class="text-sm font-extrabold mb-3">教学助教</h2>
+      <div class="quick-prompts">
+        <button type="button" data-prompt="如何验证过渡态？">TS 判据</button>
+        <button type="button" data-prompt="HOMO-LUMO 能隙与反应性有何关系？">轨道分析</button>
+        <button type="button" data-prompt="这份报告最需要改进的是什么？">报告批改</button>
+      </div>
+      <div id="chatLog" class="chat-log">
+        <div class="msg assistant">我可以解释能垒、虚频、HOMO-LUMO 能隙等概念，也能生成练习题。点击"加载样例"然后"分析数据"开始。</div>
+      </div>
+      <form id="chatForm" class="chat-form">
+        <input id="chatInput" autocomplete="off" placeholder="提问关于分析结果..." class="chat-input">
+        <button type="submit" class="chat-send" aria-label="Send">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"/></svg>
+        </button>
+      </form>
+    </aside>
+  </main>
+
+  <!-- Scripts (ES Modules) -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

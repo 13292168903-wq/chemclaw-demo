@@ -1,0 +1,14 @@
+{
+  "name": "chemclaw-demo",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "ChemClaw: 面向计算化学科研训练的多智能体教学助教",
+  "scripts": {
+    "start": "export $(grep -v '^#' .env | xargs) && node server.js",
+    "dev": "export $(grep -v '^#' .env | xargs) && node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

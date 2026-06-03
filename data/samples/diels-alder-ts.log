@@ -1,0 +1,50 @@
+ Gaussian 16:  ES64L-G16RevC.01 20-Dec-2019
+ --------------------------------------------------------------
+ #p opt=(ts,calcfc,noeigentest) freq b3lyp-d3bj/def2-svp
+     empiricaldispersion=gd3bj nosymm scf=verytight
+ --------------------------------------------------------------
+ Diels-Alder reaction: butadiene + ethylene -> cyclohexene
+ Transition state search
+ --------------------------------------------------------------
+ Symbolic Z-matrix:
+ Charge =  0 Multiplicity = 1
+ --------------------------------------------------------------
+ SCF Done:  E(RB3LYP) =  -423.119281416     A.U. after   15 cycles
+         Convg  = 0.1897D-08             -V/T =  2.0058
+ --------------------------------------------------------------
+ Dipole moment (field-independent basis, Debye):
+    X=   0.4532    Y=   0.1287    Z=  -0.3012  Tot=   0.5621
+ --------------------------------------------------------------
+ Population analysis using the SCF Density.
+
+ Alpha  occ. eigenvalues --  -10.2487  -9.8765  -8.2341  -7.4512  -6.8934
+ Alpha  occ. eigenvalues --   -6.1234  -5.8241  -5.3102  -4.8765  -3.9876
+ Alpha  occ. eigenvalues --   -3.2104  -2.8765  -2.4823  -1.9876  -1.2345
+ Alpha virt. eigenvalues --   -0.1876   0.0234   0.1456   0.2341   0.3456
+ --------------------------------------------------------------
+ Harmonic frequencies (cm**-1), IR intensities (KM/Mole)
+
+ Frequencies --   -431.5678                62.3456               118.9012
+ Red. masses --      3.4567                 2.3456                 1.2345
+ Frc consts  --      0.1234                 0.0234                 0.0123
+ IR Inten    --     12.3456                 0.2345                 0.1234
+ --------------------------------------------------------------
+ - Thermochemistry -
+ -------------------
+ Temperature   298.150 Kelvin.  Pressure   1.00000 Atm.
+
+ Zero-point correction=                           0.128456
+ Thermal correction to Energy=                    0.134567
+ Thermal correction to Enthalpy=                  0.135512
+ Thermal correction to Gibbs Free Energy=         0.098765
+ Sum of electronic and zero-point Energies=           -422.990825
+ Sum of electronic and thermal Energies=              -422.984714
+ Sum of electronic and thermal Enthalpies=            -422.983769
+ Sum of electronic and thermal Free Energies=         -423.020516
+ --------------------------------------------------------------
+ Activation barrier (ZPE-corrected): 18.6 kcal/mol
+ HOMO = -5.82 eV
+ LUMO = -2.48 eV
+ HOMO-LUMO gap = 3.34 eV
+ --------------------------------------------------------------
+ Normal termination of Gaussian 16 at Wed Jan 15 10:23:45 2025.
