@@ -32,7 +32,7 @@ export function createRoutes() {
         const result = await callOpenClawAgent({
           message: prompt,
           sessionId: `chemclaw-analyze-${Date.now()}`,
-          timeout: 120_000,
+          timeout: 180_000,
         });
 
         const localResult = await new Orchestrator(null).runAnalysis({
@@ -79,7 +79,7 @@ export function createRoutes() {
         const result = await callOpenClawAgent({
           message: prompt,
           sessionId: `chemclaw-grade-${Date.now()}`,
-          timeout: 120_000,
+          timeout: 180_000,
         });
 
         const localResult = await new Orchestrator(null).runGrading({ studentReport, analysisContext });

@@ -127,9 +127,7 @@
           <p id="roleCaption" class="text-[11px] text-ink-muted dark:text-slate-500 mt-0.5">教师视角：学习目标、评分标准、教学价值</p>
         </div>
         <div class="tab-bar" role="tablist">
-          <button class="tab active" data-view="overview">概览</button>
-          <button class="tab" data-view="agents">智能体</button>
-          <button class="tab" data-view="training">训练</button>
+          <button class="tab active" data-view="result">结果</button>
           <button class="tab" data-view="grading">批改</button>
           <button class="tab" data-view="architecture">架构</button>
         </div>
@@ -145,8 +143,8 @@
         <p class="text-ink-muted dark:text-slate-500 max-w-md text-center text-sm">后端编排四个智能体协同工作：数据解析 &rarr; 化学解释 &rarr; 教学设计 &rarr; 批改反馈。</p>
       </div>
 
-      <!-- Result View -->
-      <div id="resultView" class="result-view hidden">
+      <!-- ===== Result View ===== -->
+      <div id="resultView" class="view-page active hidden">
         <!-- Hero -->
         <div class="hero-card">
           <div class="min-w-0">
@@ -154,135 +152,139 @@
             <h2 id="projectTitle" class="text-xl font-extrabold truncate"></h2>
             <p id="summary" class="text-sm text-ink-soft dark:text-slate-400 mt-1 line-clamp-2"></p>
           </div>
-          <div class="score-dial">
-            <span id="scoreValue" class="text-3xl font-black text-brand-500">--</span>
-            <small id="scoreLabel" class="text-[10px] font-bold text-ink-muted dark:text-slate-500">报告得分</small>
-          </div>
         </div>
 
-        <!-- Metrics -->
-        <div id="metricsGrid" class="metrics-grid"></div>
+        <!-- Computation Tags -->
+        <div id="computationTags" class="computation-tags hidden"></div>
 
-        <!-- Tab Pages -->
-        <div class="view-page active" id="overviewPage">
-          <div class="overview-grid">
-            <div class="card-section">
-              <div class="section-head">
-                <h3>3D 分子结构</h3>
-                <div class="flex items-center gap-2 flex-wrap justify-end">
-                  <span id="openclawDataBadge" class="openclaw-skill-tag hidden" style="font-size:10px">🦞 OpenClaw 提供结构数据</span>
-                  <select id="structureSelect" class="compact-select" aria-label="选择结构帧"></select>
-                  <button id="playFramesButton" type="button" class="mini-btn">播放帧序列</button>
-                </div>
-              </div>
-              <div id="moleculeViewer" class="molecule-viewer-3d"></div>
-              <div id="viewerInfoBar" class="viewer-info-bar">
-                <span id="viewerEngine" class="viewer-engine-tag">Mol* Renderer</span>
-                <span id="viewerAtomCount" class="viewer-stat"></span>
-                <span id="viewerBondCount" class="viewer-stat"></span>
-              </div>
-            </div>
-            <div class="card-section">
-              <div class="section-head"><h3>相对能量曲线</h3><span class="unit-label">kcal mol&sup1;</span></div>
-              <div id="energyChart" class="energy-chart"></div>
-            </div>
-          </div>
-
-          <!-- File Details -->
-          <div class="card-section mt-3">
-            <div class="section-head"><h3>输入文件摘要</h3><span class="unit-label">智能体 1 提取</span></div>
-            <div id="fileDetailsGrid" class="details-grid"></div>
-          </div>
-
-          <!-- Basic Info + Optimization + Vibration -->
-          <div class="detail-cards mt-3">
-            <div class="card-section">
-              <div class="section-head"><h3>计算信息</h3></div>
-              <div id="basicInfoGrid" class="details-grid"></div>
-            </div>
-            <div class="card-section optimization-card">
-              <div class="section-head">
-                <h3>优化轨迹查看</h3>
-                <div class="flex items-center gap-2 flex-wrap justify-end">
-                  <button id="optPrevButton" type="button" class="mini-btn">上一帧</button>
-                  <select id="optimizationStepSelect" class="compact-select" aria-label="选择优化步"></select>
-                  <button id="optNextButton" type="button" class="mini-btn">下一帧</button>
-                  <button id="optPlayButton" type="button" class="mini-btn">播放</button>
-                </div>
-              </div>
-              <div id="optimizationMeta" class="opt-meta"></div>
-              <div id="optimizationChart" class="mini-chart"></div>
-              <div id="optimizationWarning" class="opt-warning"></div>
-            </div>
-            <div class="card-section vibration-card">
-              <div class="section-head">
-                <h3>振动模式与红外光谱</h3>
-                <div class="flex items-center gap-2 flex-wrap justify-end">
-                  <select id="vibrationSelect" class="compact-select" aria-label="选择振动模式"></select>
-                  <button id="playVibrationButton" type="button" class="mini-btn">播放振动</button>
-                </div>
-              </div>
-              <div id="vibrationChart" class="mini-chart"></div>
-            </div>
-          </div>
-
-          <!-- Learning Goals -->
-          <div id="learningGoals" class="goals-grid mt-3"></div>
-
-          <!-- OpenClaw AI Interpretation -->
-          <div id="openclawSection" class="openclaw-ai-section mt-3 hidden">
-            <div class="section-head">
-              <h3>🦞 OpenClaw AI 解读</h3>
-              <span id="openclawMeta" class="unit-label"></span>
-            </div>
-            <div id="openclawContent" class="openclaw-content"></div>
-          </div>
-        </div>
-
-        <!-- Agents Page -->
-        <div class="view-page" id="agentsPage">
-          <div id="agentFindings" class="cards-grid"></div>
-        </div>
-
-        <!-- Training Page -->
-        <div class="view-page" id="trainingPage">
-          <div class="section-head"><h3>个性化训练</h3><span class="unit-label">智能体 3 生成</span></div>
-          <div id="quizList" class="cards-grid"></div>
-          <div class="section-head mt-4"><h3>科研建议</h3><span class="unit-label">适用于科研轮转训练</span></div>
-          <div id="researchSuggestions" class="cards-grid"></div>
-        </div>
-
-        <!-- Grading Page -->
-        <div class="view-page" id="gradingPage">
-          <div id="rubricTable" class="rubric-table teacher-only"></div>
-          <div id="studentFeedback" class="student-feedback"></div>
-          <!-- OpenClaw Grading Feedback -->
-          <div id="openclawGradeSection" class="openclaw-ai-section mt-3 hidden">
-            <div class="section-head">
-              <h3>🦞 OpenClaw 批改反馈</h3>
-              <span id="openclawGradeMeta" class="unit-label"></span>
-            </div>
-            <div id="openclawGradeContent" class="openclaw-content"></div>
-          </div>
-          <div class="cards-grid mt-3">
-            <div class="card-section">
-              <h3 class="text-sm font-bold mb-2">批改反馈</h3>
-              <div id="gradingContent"></div>
-            </div>
-            <div class="card-section teacher-only">
-              <h3 class="text-sm font-bold mb-2">文献基准</h3>
-              <div id="literatureBenchmarks"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Architecture Page -->
-        <div class="view-page" id="architecturePage">
-          <div id="architectureLanes" class="arch-lanes teacher-only"></div>
+        <!-- Evidence Panel: 3D + Key Stats + Energy -->
+        <div class="evidence-grid">
           <div class="card-section">
-            <h3 class="text-sm font-bold mb-2">产品路线图</h3>
-            <ul id="nextSteps" class="list-disc pl-5 text-ink-soft dark:text-slate-400 space-y-1 text-sm"></ul>
+            <div class="section-head">
+              <h3>3D 分子结构</h3>
+              <div class="flex items-center gap-2 flex-wrap justify-end">
+                <span id="openclawDataBadge" class="openclaw-skill-tag hidden">🦞 OpenClaw 提供结构数据</span>
+                <select id="structureSelect" class="compact-select" aria-label="选择结构帧"></select>
+                <button id="playFramesButton" type="button" class="mini-btn">播放帧序列</button>
+              </div>
+            </div>
+            <div id="moleculeViewer" class="molecule-viewer-3d"></div>
+            <div id="viewerInfoBar" class="viewer-info-bar">
+              <span id="viewerEngine" class="viewer-engine-tag">Mol* Renderer</span>
+              <span id="viewerAtomCount" class="viewer-stat"></span>
+              <span id="viewerBondCount" class="viewer-stat"></span>
+            </div>
+            <div id="keyStatsRow" class="key-stats-row hidden"></div>
           </div>
+          <div class="card-section">
+            <div class="section-head"><h3>相对能量曲线</h3><span class="unit-label">kcal mol&sup1;</span></div>
+            <div id="energyChart" class="energy-chart"></div>
+          </div>
+        </div>
+
+        <!-- ===== AI Interpretation ===== -->
+        <div id="interpretationSection" class="interpretation-section hidden">
+          <div class="section-head">
+            <h3>🦞 AI 解读</h3>
+            <span id="interpretationMeta" class="unit-label"></span>
+          </div>
+          <div id="interpretationSummary" class="interpretation-summary"></div>
+          <details class="interpretation-detail">
+            <summary><span class="summary-icon"></span> 阅读完整解读</summary>
+            <div id="interpretationContent" class="interpretation-content"></div>
+          </details>
+        </div>
+
+        <!-- Collapsible: 计算详情 -->
+        <details class="collapsible-section" id="computationDetailsSection">
+          <summary><span class="summary-icon"></span> 计算详情与文件信息</summary>
+          <div class="collapsible-body">
+            <div id="computationDetailsGrid" class="details-grid"></div>
+          </div>
+        </details>
+
+        <!-- Collapsible: 优化轨迹 & 振动光谱 -->
+        <details class="collapsible-section" id="optVibSection">
+          <summary><span class="summary-icon"></span> 优化轨迹与振动光谱</summary>
+          <div class="collapsible-body">
+            <div class="detail-cards">
+              <div class="card-section optimization-card">
+                <div class="section-head">
+                  <h3>优化轨迹</h3>
+                  <div class="flex items-center gap-2 flex-wrap justify-end">
+                    <button id="optPrevButton" type="button" class="mini-btn">上一帧</button>
+                    <select id="optimizationStepSelect" class="compact-select" aria-label="选择优化步"></select>
+                    <button id="optNextButton" type="button" class="mini-btn">下一帧</button>
+                    <button id="optPlayButton" type="button" class="mini-btn">播放</button>
+                  </div>
+                </div>
+                <div id="optimizationMeta" class="opt-meta"></div>
+                <div id="optimizationChart" class="mini-chart"></div>
+                <div id="optimizationWarning" class="opt-warning"></div>
+              </div>
+              <div class="card-section vibration-card">
+                <div class="section-head">
+                  <h3>振动模式与红外光谱</h3>
+                  <div class="flex items-center gap-2 flex-wrap justify-end">
+                    <select id="vibrationSelect" class="compact-select" aria-label="选择振动模式"></select>
+                    <button id="playVibrationButton" type="button" class="mini-btn">播放振动</button>
+                  </div>
+                </div>
+                <div id="vibrationChart" class="mini-chart"></div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Collapsible: 学习与训练 -->
+        <details class="collapsible-section" id="trainingSection">
+          <summary><span class="summary-icon"></span> 学习目标与训练</summary>
+          <div class="collapsible-body">
+            <div id="learningGoals" class="cards-grid"></div>
+            <div class="section-head mt-4"><h3>练习题</h3></div>
+            <div id="quizList" class="cards-grid"></div>
+            <div class="section-head mt-4"><h3>科研建议</h3></div>
+            <div id="researchSuggestions" class="cards-grid"></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- ===== Grading View ===== -->
+      <div class="view-page" id="gradingPage">
+        <div class="grade-hero">
+          <h3>报告批改</h3>
+          <div class="grade-score">
+            <span id="gradeScoreValue" class="text-3xl font-black text-brand-500">--</span>
+            <small>综合得分</small>
+          </div>
+        </div>
+        <div id="rubricTable" class="rubric-table teacher-only"></div>
+        <div id="studentFeedback" class="student-feedback"></div>
+        <div id="openclawGradeSection" class="openclaw-ai-section mt-3 hidden">
+          <div class="section-head">
+            <h3>🦞 OpenClaw 批改反馈</h3>
+            <span id="openclawGradeMeta" class="unit-label"></span>
+          </div>
+          <div id="openclawGradeContent" class="openclaw-content"></div>
+        </div>
+        <div class="cards-grid mt-3">
+          <div class="card-section">
+            <h3 class="text-sm font-bold mb-2">批改反馈</h3>
+            <div id="gradingContent"></div>
+          </div>
+          <div class="card-section teacher-only">
+            <h3 class="text-sm font-bold mb-2">文献基准</h3>
+            <div id="literatureBenchmarks"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Architecture View ===== -->
+      <div class="view-page" id="architecturePage">
+        <div id="architectureLanes" class="arch-lanes teacher-only"></div>
+        <div class="card-section">
+          <h3 class="text-sm font-bold mb-2">产品路线图</h3>
+          <ul id="nextSteps" class="list-disc pl-5 text-ink-soft dark:text-slate-400 space-y-1 text-sm"></ul>
         </div>
       </div>
     </section>

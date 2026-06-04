@@ -28,8 +28,70 @@ import path from "node:path";
 const execFileAsync = promisify(execFile);
 
 const OPENCLAW_BIN = "openclaw";
-const DEFAULT_TIMEOUT = 120_000; // 2 min — LLM can be slow
-const MAX_INPUT_CHARS = 50_000;   // Don't send more than 50K to the agent
+const DEFAULT_TIMEOUT = 180_000; // 3 min — LLM analysis can be slow
+const MAX_INPUT_CHARS = 150_000;  // Write up to 150K to workspace file
+
+/**
+ * Smart truncation for computation output files.
+ * Keep header + key data lines + tail; cut repetitive optimization steps.
+ */
+function smartTruncate(text, maxChars) {
+  if (text.length <= maxChars) return text;
+
+  const lines = text.split("\n");
+
+  // Keep first 300 lines (route, title, initial coords, first pop analysis)
+  const headerLines = 300;
+
+  // Extract ALL important lines from the entire file
+  const important = [];
+  const importantPatterns = [
+    /SCF Done/i, /Population analysis/i, /HOMO/i, /LUMO/i,
+    /Standard orientation/i, /Input orientation/i, /NAtoms/i,
+    /Frequencies/i, /imaginary/i, /Zero-point/i, /Thermal/i,
+    /Dipole/i, /Converged/i, /Stationary point/i, /Normal termination/i,
+    /Item\s+Value/i, /Maximum Force/i, /RMS\s+Force/i,
+    /optimization completed/i, /#p/i, /#n/i,
+  ];
+
+  const importantIndices = new Set();
+  for (let i = 0; i < lines.length; i++) {
+    for (const pat of importantPatterns) {
+      if (pat.test(lines[i])) {
+        importantIndices.add(i);
+        // Also keep surrounding context (2 lines before/after)
+        for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 2); j++) {
+          importantIndices.add(j);
+        }
+      }
+    }
+  }
+
+  // Tail: last 600 lines
+  const tailLines = 600;
+  for (let i = Math.max(0, lines.length - tailLines); i < lines.length; i++) {
+    importantIndices.add(i);
+  }
+
+  // Header lines
+  for (let i = 0; i < Math.min(headerLines, lines.length); i++) {
+    importantIndices.add(i);
+  }
+
+  // Build result: header + important lines in order + tail
+  const sorted = [...importantIndices].sort((a, b) => a - b);
+  const resultLines = [];
+  let lastIdx = -10;
+  for (const idx of sorted) {
+    if (idx > lastIdx + 2) resultLines.push(`\n...[${idx - lastIdx - 1} lines omitted]...\n`);
+    resultLines.push(lines[idx]);
+    lastIdx = idx;
+  }
+
+  let result = resultLines.join("\n");
+  if (result.length > maxChars) result = result.slice(0, maxChars);
+  return result;
+}
 
 /**
  * Detect whether OpenClaw is available on this system.
@@ -72,10 +134,30 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
     throw new Error("Empty message");
   }
 
-  // Truncate overly long input
-  const safeMessage = message.length > MAX_INPUT_CHARS
-    ? message.slice(0, MAX_INPUT_CHARS) + "\n...[truncated]"
-    : message;
+  // For large analysis data, write to workspace file and let agent read from file
+  const isLarge = message.length > 5000;
+  let safeMessage = message;
+  if (isLarge) {
+    // Smart truncate: keep header + tail, cut intermediate optimization steps
+    let fileContent = smartTruncate(message, MAX_INPUT_CHARS);
+    fileContent = fileContent.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+
+    // Write to OpenClaw workspace so the agent can access it directly
+    const wsDir = path.join(
+      process.env.HOME || process.env.USERPROFILE || "/tmp",
+      ".openclaw/workspace"
+    );
+    const inputFile = path.join(wsDir, `chemclaw-input-${Date.now()}.txt`);
+    try {
+      const fs = await import("node:fs/promises");
+      await fs.mkdir(wsDir, { recursive: true });
+      await fs.writeFile(inputFile, fileContent, "utf-8");
+      safeMessage = `请使用 chemclaw-analyze 技能分析文件: ${inputFile}`;
+    } catch (e) {
+      console.error("Cannot write to workspace:", e.message);
+      safeMessage = fileContent.slice(0, 8000);
+    }
+  }
 
   const args = [
     "agent",
@@ -87,8 +169,8 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
   ];
 
   const { stdout, stderr } = await execFileAsync(OPENCLAW_BIN, args, {
-    timeout: timeout || DEFAULT_TIMEOUT,
-    maxBuffer: 5 * 1024 * 1024, // 5 MB
+    timeout: (timeout || DEFAULT_TIMEOUT) * 2,
+    maxBuffer: 5 * 1024 * 1024,
     env: { ...process.env },
   });
 
@@ -110,7 +192,7 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
   }
 
   const data = JSON.parse(jsonStr.trim());
-  const payload = data.payloads?.[0] || {};
+  const payloads = data.payloads || [];
   const meta = data.meta || {};
   const agentMeta = meta.agentMeta || {};
 
@@ -120,8 +202,32 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
     .filter(s => s.name.startsWith("chemclaw"))
     .map(s => s.name);
 
+  // Save raw response for debugging
+  try {
+    const fs = await import("node:fs");
+    fs.writeFileSync("/tmp/openclaw-raw.json", jsonStr.trim().slice(0, 50000));
+  } catch {}
+
+  // Use first payload text as the analysis (may include thinking; we clean below)
+  const payload = payloads[0] || {};
+  let rawText = payload.text || "";
+
+  // Also check ALL payloads for longer text (sometimes analysis is in later payloads)
+  for (const p of payloads) {
+    if ((p.text || "").length > rawText.length) rawText = p.text;
+  }
+
+  // Check tool results for Python script output
+  for (const p of payloads) {
+    for (const r of (p.toolResults || [])) {
+      if ((r.output || "").length > rawText.length) rawText = r.output;
+    }
+  }
+
+  const cleanedText = cleanAgentResponse(rawText) || rawText.trim();
+
   return {
-    text: payload.text || "",
+    text: cleanedText,
     durationMs: meta.durationMs || 0,
     model: agentMeta.model || "unknown",
     provider: agentMeta.provider || "unknown",
@@ -130,6 +236,78 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
     usage: agentMeta.usage || {},
     raw: data,
   };
+}
+
+/**
+ * Convert structured skill JSON output into readable markdown.
+ */
+function formatSkillJson(json) {
+  const parts = [];
+  if (json.calculationType) parts.push(`**计算类型:** ${json.calculationType}`);
+
+  if (json.explanations?.length) {
+    for (const exp of json.explanations) {
+      parts.push(`### ${exp.concept || ""}`);
+      parts.push(exp.evidence || "");
+      if (exp.teaching) parts.push(exp.teaching);
+    }
+  }
+  if (json.grading) {
+    parts.push(`**得分:** ${json.grading.score}`);
+    if (json.grading.strengths?.length) parts.push(`**优点:** ${json.grading.strengths.join("；")}`);
+    if (json.grading.improvements?.length) parts.push(`**改进:** ${json.grading.improvements.join("；")}`);
+  }
+  if (json.learningGoals?.length) {
+    parts.push("## 学习目标");
+    for (const g of json.learningGoals) {
+      parts.push(`- **${g.concept || ""}:** ${g.outcome || ""} (${g.evidence || ""})`);
+    }
+  }
+  if (json.quiz?.length) {
+    parts.push("## 练习题");
+    for (const q of json.quiz) {
+      parts.push(`- [${q.type || "Q"}] ${q.question || q}`);
+    }
+  }
+  if (json.researchSuggestions?.length) {
+    parts.push("## 科研建议");
+    for (const s of json.researchSuggestions) {
+      parts.push(`- ${typeof s === "string" ? s : s.suggestion || ""}`);
+    }
+  }
+  return parts.join("\n\n") || "";
+}
+
+/**
+ * Strip internal monologue from agent response.
+ * Finds where the actual analysis content starts (heading, key phrase, etc.)
+ * and removes everything before it.
+ */
+function cleanAgentResponse(text) {
+  if (!text) return "";
+
+  // Look for content start markers
+  const markers = [
+    /(?:^|\n)#{1,3}\s/,           // markdown heading
+    /(?:^|\n)\*\*/,               // bold text start
+    /(?:^|\n)(?:分析结果|计算结果|摘要|报告|根据分析|关键发现|计算参数|1\.\s)/,
+    /(?:^|\n)(?:Summary|Results|Analysis|Key\s)/i,
+  ];
+
+  for (const re of markers) {
+    const match = text.match(re);
+    if (match && match.index > 0) {
+      return text.slice(match.index).replace(/^\n+/, "").trim();
+    }
+  }
+
+  // Fallback: strip just the very first sentence if it's a known preamble
+  const m = text.match(/^([^。．\n]*[。．])\s*/);
+  if (m && /(?:好的|我来|现在运行|让我|首先|使用技能|查看脚本)/.test(m[1])) {
+    return text.slice(m[0].length).trim();
+  }
+
+  return text.trim();
 }
 
 /**

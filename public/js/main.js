@@ -1,7 +1,7 @@
 // ===== Main Entry Point =====
 import { state, $, $$ } from "./state.js";
 import { analyze, grade, fetchStatus } from "./api.js";
-import { initMoleculeViewer, loadMoleculeToViewer, loadFramesToViewer, extractMoleculeFromText, resolveMoleculeText, sampleDataset, sampleReport, sampleMolecule } from "./viewer.js";
+import { extractMoleculeFromText, sampleDataset, sampleReport, sampleMolecule } from "./viewer.js";
 import { renderAnalysisResult, renderGradeResult, updateRoleUi, selectStructureFrame, stepOptimization, clearOptPlayback, updateOptViewer } from "./renderers.js";
 import { addMessage, askAgent } from "./chat.js";
 import { initTheme, toggleTheme } from "./theme.js";
@@ -60,8 +60,6 @@ function loadSample() {
   $("#datasetText").value = sampleDataset;
   $("#moleculeText").value = sampleMolecule;
   $("#studentReport").value = sampleReport;
-  initMoleculeViewer();
-  setTimeout(() => loadMoleculeToViewer(sampleMolecule), 300);
 }
 
 // ===== Analyze Handler =====
@@ -134,18 +132,12 @@ $("#datasetFile").addEventListener("change", async () => {
   const text = await file.text();
   if (file.name.toLowerCase().endsWith(".xyz")) {
     $("#moleculeText").value = text;
-    initMoleculeViewer();
-    setTimeout(() => loadMoleculeToViewer(text), 200);
     return;
   }
   $("#datasetText").value = text;
   if (!$("#moleculeText").value.trim()) {
     const extracted = extractMoleculeFromText(text);
-    if (extracted) {
-      $("#moleculeText").value = extracted;
-      initMoleculeViewer();
-      setTimeout(() => loadMoleculeToViewer(extracted), 200);
-    }
+    if (extracted) $("#moleculeText").value = extracted;
   }
 });
 
@@ -154,8 +146,6 @@ $("#moleculeFile").addEventListener("change", async () => {
   const file = $("#moleculeFile").files?.[0];
   if (!file) return;
   $("#moleculeText").value = await file.text();
-  initMoleculeViewer();
-  setTimeout(() => loadMoleculeToViewer($("#moleculeText").value), 200);
 });
 
 // Structure frame select
@@ -226,22 +216,6 @@ $("#playVibrationButton").addEventListener("click", () => {
   $("#playVibrationButton").textContent = "光谱模式";
 });
 
-// Debounced molecule text input
-let molDebounce = null;
-$("#moleculeText").addEventListener("input", () => {
-  clearTimeout(molDebounce);
-  molDebounce = setTimeout(() => { initMoleculeViewer(); loadMoleculeToViewer($("#moleculeText").value || sampleMolecule); }, 400);
-});
-
-// Auto-detect molecule from report text
-$("#studentReport").addEventListener("input", () => {
-  if ($("#moleculeText").value.trim()) return;
-  clearTimeout(molDebounce);
-  molDebounce = setTimeout(() => {
-    const txt = extractMoleculeFromText($("#studentReport").value) || sampleMolecule;
-    initMoleculeViewer(); loadMoleculeToViewer(txt);
-  }, 400);
-});
 
 // Quick prompts
 $$(".quick-prompts button").forEach(btn => btn.addEventListener("click", () => {
@@ -262,14 +236,14 @@ $$(".role-btn").forEach(btn => btn.addEventListener("click", () => {
   updateRoleUi();
 }));
 
-// Tab switching
+// Tab switching (result | grading | architecture)
 $$(".tab").forEach(btn => btn.addEventListener("click", () => {
-  $$(".tab").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
+  const view = btn.dataset.view;
+  $$(".tab").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   $$(".view-page").forEach(p => p.classList.remove("active"));
-  const page = $(`#${btn.dataset.view}Page`);
-  if (page) page.classList.add("active");
-  if (btn.dataset.view === "overview" && state.viewer?.plugin) setTimeout(() => {
+  const target = view === "result" ? $("#resultView") : $(`#${view}Page`);
+  if (target) target.classList.add("active");
+  if (view === "result" && state.viewer?.plugin) setTimeout(() => {
     try { state.viewer.plugin.layout.events.update.emit("size"); } catch { /* best effort */ }
   }, 100);
 }));
