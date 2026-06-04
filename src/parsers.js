@@ -25,8 +25,18 @@ export function parseGaussian(text) {
   };
 
   // 计算方法 / 基组
-  const routeMatch = text.match(/^#p?\s+(.+)$/m);
+  const routeMatch = text.match(/^\s*#p?\s+(.+)$/m);
   if (routeMatch) result.route = routeMatch[1].trim();
+
+  // 提取方法和基组 (e.g., "B3LYP/6-31+G(d,p)" or "UHF/6-31G(d)")
+  if (result.route) {
+    const methodMatch = result.route.match(/(?:^|\s)([A-Za-z0-9-]+\/[^\s]+)/);
+    if (methodMatch) {
+      const parts = methodMatch[1].split("/");
+      result.method = parts[0] || null;
+      result.basis = parts.slice(1).join("/") || null;
+    }
+  }
 
   // 电荷与自旋多重度
   const chargeMatch = text.match(/Charge\s*=\s*(-?\d+)\s+Multiplicity\s*=\s*(\d+)/i);
@@ -99,19 +109,20 @@ export function parseGaussian(text) {
   }
 
   // 热化学数据
-  const thermoBlock = text.match(/- Thermochemistry -[\s\S]*?(?=------|$)/i);
+  const thermoBlock = text.match(/- Thermochemistry -([\s\S]*)/i);
   if (thermoBlock) {
-    const zpeMatch = thermoBlock[0].match(/Zero-point correction=\s*(-?[\d.]+)/i)
-      || thermoBlock[0].match(/Sum of electronic and zero-point Energies=\s*(-?[\d.]+)/i);
+    const block = thermoBlock[1];
+    const zpeMatch = block.match(/Zero-point correction=\s*(-?[\d.]+)/i)
+      || block.match(/Sum of electronic and zero-point Energies=\s*(-?[\d.]+)/i);
     if (zpeMatch) result.thermo.zpe = parseFloat(zpeMatch[1]);
 
-    const thermalMatch = thermoBlock[0].match(/Sum of electronic and thermal Energies=\s*(-?[\d.]+)/i);
+    const thermalMatch = block.match(/Sum of electronic and thermal Energies=\s*(-?[\d.]+)/i);
     if (thermalMatch) result.thermo.thermalEnergy = parseFloat(thermalMatch[1]);
 
-    const enthalpyMatch = thermoBlock[0].match(/Sum of electronic and thermal Enthalpies=\s*(-?[\d.]+)/i);
+    const enthalpyMatch = block.match(/Sum of electronic and thermal Enthalpies=\s*(-?[\d.]+)/i);
     if (enthalpyMatch) result.thermo.enthalpy = parseFloat(enthalpyMatch[1]);
 
-    const gibbsMatch = thermoBlock[0].match(/Sum of electronic and thermal Free Energies=\s*(-?[\d.]+)/i);
+    const gibbsMatch = block.match(/Sum of electronic and thermal Free Energies=\s*(-?[\d.]+)/i);
     if (gibbsMatch) result.thermo.gibbs = parseFloat(gibbsMatch[1]);
   }
 
@@ -188,6 +199,8 @@ export function parseORCA(text) {
 
 const KNOWN_CALC_TYPES = [
   { pattern: /#p?\s+.*\bopt\b.*\bfreq\b/i, label: "结构优化 + 频率分析" },
+  { pattern: /#p?\s+.*\bmodredundant\b/i, label: "构象扫描 (modredundant)" },
+  { pattern: /#p?\s+.*\bscan\b/i, label: "势能面扫描" },
   { pattern: /#p?\s+.*\bopt\b/i, label: "结构优化" },
   { pattern: /#p?\s+.*\bfreq\b/i, label: "频率分析" },
   { pattern: /#p?\s+.*\birc\b/i, label: "IRC 反应路径" },

@@ -27,5 +27,8 @@ export const labels = {
   homoLumoGap: "HOMO-LUMO",
   imaginaryFrequency: "虚频",
   adsorptionEnergy: "吸附能",
+  zeroPointEnergy: "零点能(ZPE)",
+  enthalpy: "焓(H)",
+  gibbsFreeEnergy: "自由能(G)",
   confidence: "置信度"
 };

@@ -72,7 +72,7 @@ function switchTab(name) {
 
 // ===== Key Stats (2-3 core numbers below 3D viewer) =====
 function renderKeyStats(metrics) {
-  const priority = ["activationBarrier", "homoLumoGap", "imaginaryFrequency"];
+  const priority = ["activationBarrier", "homoLumoGap", "imaginaryFrequency", "zeroPointEnergy", "gibbsFreeEnergy"];
   const entries = priority
     .map(key => [key, metrics[key]])
     .filter(([, v]) => v !== undefined && v !== null && v !== "");
@@ -84,7 +84,7 @@ function renderKeyStats(metrics) {
   $("#keyStatsRow").classList.remove("hidden");
   $("#keyStatsRow").innerHTML = entries.map(([key, value]) => {
     const label = labels[key] || key;
-    const unitMap = { activationBarrier: "kcal/mol", homoLumoGap: "eV", imaginaryFrequency: "cm⁻¹" };
+    const unitMap = { activationBarrier: "kcal/mol", homoLumoGap: "eV", imaginaryFrequency: "cm⁻¹", zeroPointEnergy: "Hartree", enthalpy: "Hartree", gibbsFreeEnergy: "Hartree" };
     return `<div class="key-stat"><span class="ks-label">${label}</span><span class="ks-value">${value}</span><span class="ks-unit">${unitMap[key] || ""}</span></div>`;
   }).join("");
 }
@@ -311,6 +311,61 @@ function renderVibrationalProfile(profile = {}) {
 }
 
 // ===== AI Interpretation (summary + collapsible detail) =====
+// Key findings: 2-4 critical numbers extracted from analysis, shown above summary
+function renderKeyFindings(result) {
+  const bar = $("#keyFindingsBar");
+  const m = result.metrics || {};
+  const b = result.basicInfo || {};
+
+  const items = [];
+
+  // SCF energy (always show if available)
+  const scf = m.scfEnergy || b.scfEnergy;
+  if (scf != null) {
+    items.push({ label: "SCF 能量", value: `${Number(scf).toFixed(6)}`, unit: "Hartree" });
+  }
+
+  // Barrier
+  if (m.activationBarrier) {
+    items.push({ label: "能垒", value: m.activationBarrier, unit: "" });
+  }
+
+  // Imaginary frequency
+  if (m.imaginaryFrequency && m.imaginaryFrequency !== "未检出") {
+    items.push({ label: "虚频", value: m.imaginaryFrequency, unit: "" });
+  } else if (m.imaginaryFrequency === "未检出") {
+    items.push({ label: "虚频", value: "无", unit: "极小点" });
+  }
+
+  // HOMO-LUMO gap
+  if (m.homoLumoGap) {
+    items.push({ label: "HOMO-LUMO", value: m.homoLumoGap, unit: "" });
+  }
+
+  // ZPE
+  if (m.zeroPointEnergy) {
+    items.push({ label: "零点能", value: m.zeroPointEnergy.replace(" Hartree", ""), unit: "Hartree" });
+  }
+
+  // Gibbs
+  if (m.gibbsFreeEnergy) {
+    items.push({ label: "自由能", value: m.gibbsFreeEnergy.replace(" Hartree", ""), unit: "Hartree" });
+  }
+
+  if (items.length === 0) {
+    bar.classList.add("hidden");
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.innerHTML = items.slice(0, 5).map(item =>
+    `<div class="key-finding">
+      <span class="kf-label">${item.label}</span>
+      <span class="kf-value">${item.value}</span>
+      ${item.unit ? `<span class="kf-sub">${item.unit}</span>` : ""}
+    </div>`
+  ).join("");
+}
+
 function renderInterpretation(result) {
   const section = $("#interpretationSection");
   const meta = $("#interpretationMeta");
@@ -326,6 +381,9 @@ function renderInterpretation(result) {
   }
 
   section.classList.remove("hidden");
+
+  // Key findings bar: highlight critical numbers from analysis
+  renderKeyFindings(result);
 
   if (hasOpenClaw) {
     meta.textContent = `${result.openclawModel || ""} · ${result.openclawSkill || ""} · ${(result.openclawDuration / 1000).toFixed(1)}s`;

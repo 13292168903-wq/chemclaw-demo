@@ -44,6 +44,8 @@ export class DataParserAgent {
       charge: parsed.charge,
       multiplicity: parsed.multiplicity,
       route: parsed.route,
+      method: parsed.method,
+      basis: parsed.basis,
       barrier: parsed.barrier,
       adsorption: parsed.adsorption,
       thermo: parsed.thermo,

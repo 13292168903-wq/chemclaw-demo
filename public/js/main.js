@@ -250,5 +250,5 @@ $$(".tab").forEach(btn => btn.addEventListener("click", () => {
 
 // ===== Initialize =====
 updateRoleUi();
-loadSample();
+// Don't auto-load sample — user clicks "加载样例" to fill the form
 loadStatus();

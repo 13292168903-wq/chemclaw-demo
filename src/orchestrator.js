@@ -139,10 +139,14 @@ export class Orchestrator {
       summary: this.buildSummary(metrics, imagCount, teachResult),
       metrics: {
         calculationType: metrics.calculationType || "通用计算",
+          scfEnergy: metrics.scfEnergy,
         ...(barrier !== null ? { activationBarrier: `${barrier} kcal/mol` } : {}),
         ...(gap !== null ? { homoLumoGap: `${gap} eV` } : {}),
         imaginaryFrequency: imagCount > 0 ? `${metrics.imaginaryFrequencies[0]} cm⁻¹` : "未检出",
         ...(adsorption !== undefined ? { adsorptionEnergy: `${adsorption} eV` } : {}),
+        ...(metrics.thermo?.zpe != null ? { zeroPointEnergy: `${metrics.thermo.zpe.toFixed(6)} Hartree` } : {}),
+        ...(metrics.thermo?.enthalpy != null ? { enthalpy: `${metrics.thermo.enthalpy.toFixed(6)} Hartree` } : {}),
+        ...(metrics.thermo?.gibbs != null ? { gibbsFreeEnergy: `${metrics.thermo.gibbs.toFixed(6)} Hartree` } : {}),
         confidence: metrics.normalTermination ? "高" : "中"
       },
       chart,
@@ -245,6 +249,8 @@ export class Orchestrator {
       software: metrics.fileDetails?.format === "gaussian" ? "Gaussian" : metrics.fileDetails?.format === "orca" ? "ORCA" : "未知",
       fileName: datasetName,
       taskType: metrics.calculationType || "未知任务",
+      method: metrics.method || null,
+      basis: metrics.basis || null,
       route: metrics.route || null,
       chargeMultiplicity: metrics.charge !== null && metrics.charge !== undefined ? `${metrics.charge} / ${metrics.multiplicity ?? "-"}` : null,
       outputCount: metrics.fileDetails?.energyPointCount || 0,

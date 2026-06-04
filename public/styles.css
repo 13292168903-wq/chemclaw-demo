@@ -801,6 +801,48 @@ body[data-role="student"] .student-feedback { display: block; }
 }
 
 /* --- AI Interpretation --- */
+
+/* Key Findings Bar */
+.key-findings-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.key-finding {
+  flex: 1;
+  min-width: 130px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #fed7aa;
+  background: white;
+}
+.dark .key-finding { background: #0f172a; border-color: #7c2d12; }
+.key-finding .kf-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  color: #667085;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.dark .key-finding .kf-label { color: #94a3b8; }
+.key-finding .kf-value {
+  display: block;
+  font-size: 18px;
+  font-weight: 900;
+  color: #0f766e;
+  line-height: 1.2;
+}
+.dark .key-finding .kf-value { color: #14b8a6; }
+.key-finding .kf-sub {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
 .interpretation-summary {
   margin-top: 14px;
   padding: 14px 16px;
