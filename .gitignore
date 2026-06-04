@@ -1,0 +1,5 @@
+.workbuddy/
+.codebuddy/
+.env
+.DS_Store
+*.bak
