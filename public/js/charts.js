@@ -44,7 +44,7 @@ export function renderEnergyChart(chart) {
       <line x1="${padX}" y1="${height-padY}" x2="${width-padX}" y2="${height-padY}" stroke="${dark ? '#334155' : 'rgba(23,32,42,.35)'}" stroke-width="1.2"/>
       ${yTicks.map((t,i) => `<text x="${padX-10}" y="${padY+innerH*i/2+4}" text-anchor="end" fill="${textMuted}" font-size="12" font-weight="800">${t}</text>`).join("")}
       <path d="${d}" fill="none" stroke="url(#eg)" stroke-width="4" stroke-linecap="round" filter="url(#glow)"/>
-      ${points.map((p,i) => `<g transform="translate(${p.x},${p.y})"><circle r="8" fill="${i===1?'#b42318':'#0f766e'}" stroke="${bg}" stroke-width="3"/><text y="-16" text-anchor="middle" fill="${textInk}" font-size="11" font-weight="900">${rawValues[i].toFixed(2)}</text></g>`).join("")}
+      ${points.map((p,i) => `<g class="energy-point" data-index="${i}" transform="translate(${p.x},${p.y})" style="cursor:pointer"><circle r="${i===1?10:8}" fill="${i===1?'#b42318':'#0f766e'}" stroke="${bg}" stroke-width="3"/><text y="-16" text-anchor="middle" fill="${textInk}" font-size="11" font-weight="900">${rawValues[i].toFixed(2)}</text></g>`).join("")}
       ${points.map((p,i) => `<text x="${p.x}" y="${height-14}" text-anchor="middle" fill="${textMuted}" font-size="12" font-weight="800">${p.label}</text>`).join("")}
     </svg>`;
 }
@@ -151,4 +151,151 @@ export function renderSpectrum(modes, selectedIndex) {
       <text x="${padX+8}" y="${padY+14}" fill="${dark ? '#e2e8f0' : '#344054'}" font-size="12" font-weight="900">红外光谱</text>
     </svg>
     <div class="mode-note">模式 ${selectedMode.index}，频率 ${Number(selectedMode.frequency).toFixed(2)} cm&sup1;，强度 ${Number(selectedMode.intensity||0).toFixed(2)}</div>`;
+}
+
+// ===== Expanded Chart Renderers (for zoom modal) =====
+
+// Shared theme helper
+function getColors() {
+  const dark = document.documentElement.classList.contains("dark");
+  return {
+    bg: dark ? "#0f172a" : "#fbfcfd",
+    gridLine: dark ? "#1e293b" : "#d9e1e8",
+    textInk: dark ? "#e2e8f0" : "#17202a",
+    textMuted: dark ? "#64748b" : "#667085",
+    axis: dark ? "#334155" : "#98a6b3",
+  };
+}
+
+export function renderExpandedEnergyChart(chartData) {
+  const { labels, values, note } = chartData;
+  if (!values?.length) return "<p>无数据</p>";
+
+  const c = getColors();
+  const n = values.length;
+  // Dynamic width: minimum 700, but enough space per point
+  const pointSpacing = Math.max(80, 700 / n);
+  const width = Math.max(700, n * pointSpacing + 100);
+  const height = 360, padX = 60, padY = 40;
+  const innerW = width - padX * 2, innerH = height - padY * 2;
+
+  const rawValues = values.map(Number);
+  const min = Math.min(...rawValues), max = Math.max(...rawValues);
+  const range = Math.max(max - min, 1);
+
+  const points = rawValues.map((v, i) => ({
+    x: padX + (innerW * i) / Math.max(n - 1, 1),
+    y: padY + innerH - ((v - min) / range) * innerH,
+    value: v,
+    label: labels[i] || `点${i + 1}`
+  }));
+
+  const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const yTicks = 5;
+  const yTickValues = Array.from({length: yTicks}, (_, i) => (min + (range * i) / (yTicks - 1)).toFixed(2));
+
+  // Determine which points to label: first, last, extremes, and transition state
+  const extremeIdx = rawValues.indexOf(max); // highest energy point (likely TS)
+  const labelIndices = new Set([0, n - 1, extremeIdx]);
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; min-height:360px">
+      <defs>
+        <linearGradient id="eg2" x1="0" x2="1"><stop offset="0%" stop-color="#0f766e"/><stop offset="100%" stop-color="#2563eb"/></linearGradient>
+      </defs>
+      <rect width="${width}" height="${height}" rx="8" fill="${c.bg}"/>
+      ${Array.from({length: yTicks}, (_, i) => `<line x1="${padX}" y1="${padY+innerH*i/(yTicks-1)}" x2="${width-padX}" y2="${padY+innerH*i/(yTicks-1)}" stroke="${c.gridLine}" stroke-width="1"/>`).join("")}
+      <line x1="${padX}" y1="${padY}" x2="${padX}" y2="${height-padY}" stroke="${c.axis}" stroke-width="1.2"/>
+      <line x1="${padX}" y1="${height-padY}" x2="${width-padX}" y2="${height-padY}" stroke="${c.axis}" stroke-width="1.2"/>
+      ${yTickValues.map((t, i) => `<text x="${padX-10}" y="${padY+innerH*i/(yTicks-1)+4}" text-anchor="end" fill="${c.textMuted}" font-size="13" font-weight="800">${t}</text>`).join("")}
+      <path d="${d}" fill="none" stroke="url(#eg2)" stroke-width="4" stroke-linecap="round"/>
+      ${points.map((p, i) => {
+        const isLabeled = labelIndices.has(i);
+        const isTS = i === extremeIdx;
+        return `<g transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+          <circle r="${isTS ? 10 : 6}" fill="${isTS ? '#b42318' : '#0f766e'}" stroke="${c.bg}" stroke-width="3"/>
+          <text y="-18" text-anchor="middle" fill="${c.textInk}" font-size="12" font-weight="900">${p.value.toFixed(2)}</text>
+          ${isLabeled ? `<text y="${isTS ? 28 : 22}" text-anchor="middle" fill="${c.textMuted}" font-size="11" font-weight="800">${p.label}</text>` : ""}
+        </g>`;
+      }).join("")}
+    </svg>
+    ${note ? `<p style="margin-top:12px; color:${c.textMuted}; font-size:13px; text-align:center">${note}</p>` : ""}`;
+}
+
+export function renderExpandedTrajectoryChart(trajectory, selectedIndex) {
+  if (!trajectory?.length) return "<p>无数据</p>";
+
+  const values = trajectory.map(p => Number.isFinite(p.relativeEnergyKcal) ? p.relativeEnergyKcal : null);
+  const valid = values.filter(Number.isFinite);
+  if (valid.length < 2) return "<p>数据点不足</p>";
+
+  const c = getColors();
+  const n = trajectory.length;
+  const pointSpacing = Math.max(60, 600 / n);
+  const width = Math.max(600, n * pointSpacing + 80);
+  const height = 320, padX = 50, padY = 36;
+  const innerW = width - padX * 2, innerH = height - padY * 2;
+  const min = Math.min(...valid), max = Math.max(...valid);
+  const range = Math.max(max - min, 1e-6);
+
+  const points = values.map((v, i) => {
+    if (!Number.isFinite(v)) return null;
+    return {
+      x: padX + (i / Math.max(n - 1, 1)) * innerW,
+      y: padY + (1 - ((v - min) / range)) * innerH,
+      value: v,
+      step: trajectory[i].step
+    };
+  });
+
+  const d = points.filter(Boolean).map((p, i) => `${i ? "L" : "M"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const yTicks = 4;
+  const yTickValues = Array.from({length: yTicks}, (_, i) => (min + (range * i) / (yTicks - 1)).toFixed(2));
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; min-height:320px">
+      <rect width="${width}" height="${height}" rx="8" fill="${c.bg}"/>
+      <text x="${padX}" y="20" fill="${c.textInk}" font-size="14" font-weight="900">总能量 vs 优化步</text>
+      <text x="${width-padX}" y="20" fill="${c.textMuted}" font-size="12" font-weight="800" text-anchor="end">相对能量 / kcal mol&sup1;</text>
+      ${Array.from({length: yTicks}, (_, i) => `<line x1="${padX}" y1="${padY+innerH*i/(yTicks-1)}" x2="${width-padX}" y2="${padY+innerH*i/(yTicks-1)}" stroke="${c.gridLine}"/>`).join("")}
+      ${yTickValues.map((t, i) => `<text x="${padX-8}" y="${padY+innerH*i/(yTicks-1)+4}" text-anchor="end" fill="${c.textMuted}" font-size="12" font-weight="800">${t}</text>`).join("")}
+      <path d="${d}" fill="none" stroke="#275cd8" stroke-width="3" stroke-linecap="round"/>
+      ${points.map((p, i) => p ? `
+        <g class="optimization-point" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)})">
+          <circle r="${i===selectedIndex?8:4}" fill="${i===selectedIndex?"#b42318":"#275cd8"}" stroke="${c.bg}" stroke-width="2.5"/>
+          <text y="-14" text-anchor="middle" fill="${c.textInk}" font-size="11" font-weight="900">${p.value.toFixed(2)}</text>
+          ${i % Math.max(1, Math.floor(n/15)) === 0 || i === selectedIndex ? `<text y="20" text-anchor="middle" fill="${c.textMuted}" font-size="10" font-weight="800">步${p.step}</text>` : ""}
+        </g>` : "").join("")}
+      <text x="${padX}" y="${height-8}" fill="${c.textMuted}" font-size="11" font-weight="800">步 ${trajectory[0]?.step ?? 1}</text>
+      <text x="${width-padX}" y="${height-8}" text-anchor="end" fill="${c.textMuted}" font-size="11" font-weight="800">步 ${trajectory[trajectory.length-1]?.step ?? trajectory.length}</text>
+    </svg>`;
+}
+
+// ===== Chart Zoom Facility =====
+export function openChartZoom(title, renderFn) {
+  $("#chartModalTitle").textContent = title;
+  $("#chartModalBody").innerHTML = renderFn();
+  $("#chartModal").classList.remove("hidden");
+}
+
+export function closeChartZoom() {
+  $("#chartModal").classList.add("hidden");
+}
+
+// Attach click-to-zoom to energy chart
+export function attachEnergyChartZoom(chartData) {
+  const el = $("#energyChart");
+  if (!el || !chartData?.values?.length) return;
+  el.style.cursor = "pointer";
+  el.title = "点击放大查看";
+  el.onclick = () => openChartZoom("相对能量曲线", () => renderExpandedEnergyChart(chartData));
+}
+
+// Attach click-to-zoom to optimization chart
+export function attachOptimizationChartZoom(trajectory, selectedIndex) {
+  const el = $("#optimizationChart");
+  if (!el || !trajectory?.length) return;
+  el.style.cursor = "pointer";
+  el.title = "点击放大查看";
+  el.onclick = () => openChartZoom("优化轨迹", () => renderExpandedTrajectoryChart(trajectory, selectedIndex));
 }

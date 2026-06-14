@@ -346,7 +346,7 @@ export function resolveMoleculeText() {
   return $("#moleculeText").value.trim()
     || extractMoleculeFromText($("#studentReport").value)
     || extractMoleculeFromText($("#datasetText").value)
-    || sampleMolecule;
+    || "";
 }
 
 // ===== Sample Data =====

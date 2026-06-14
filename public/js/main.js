@@ -5,7 +5,7 @@ import { extractMoleculeFromText, sampleDataset, sampleReport, sampleMolecule } 
 import { renderAnalysisResult, renderGradeResult, updateRoleUi, selectStructureFrame, stepOptimization, clearOptPlayback, updateOptViewer } from "./renderers.js";
 import { addMessage, askAgent } from "./chat.js";
 import { initTheme, toggleTheme } from "./theme.js";
-import { renderSpectrum } from "./charts.js";
+import { renderSpectrum, closeChartZoom } from "./charts.js";
 
 // ===== Theme =====
 initTheme();
@@ -247,6 +247,11 @@ $$(".tab").forEach(btn => btn.addEventListener("click", () => {
     try { state.viewer.plugin.layout.events.update.emit("size"); } catch { /* best effort */ }
   }, 100);
 }));
+
+// Chart modal close: click backdrop or close button or ESC
+$("#chartModalClose").addEventListener("click", closeChartZoom);
+$("#chartModal").querySelector(".chart-modal-backdrop")?.addEventListener("click", closeChartZoom);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeChartZoom(); });
 
 // ===== Initialize =====
 updateRoleUi();

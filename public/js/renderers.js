@@ -4,7 +4,7 @@
 //   renderGradeResult     → 批改页
 //   updateRoleUi          → 教师/学生角色切换
 import { state, $, $$, labels } from "./state.js";
-import { renderEnergyChart, renderMiniLineChart, renderOptimizationTrajectoryChart, renderSpectrum } from "./charts.js";
+import { renderEnergyChart, renderMiniLineChart, renderOptimizationTrajectoryChart, renderSpectrum, attachEnergyChartZoom, attachOptimizationChartZoom } from "./charts.js";
 import { initMoleculeViewer, loadMoleculeToViewer, loadFramesToViewer, resolveMoleculeText, xyzToPdb, parseXYZAtoms, computeBonds } from "./viewer.js";
 
 // ===== Main: 结果页渲染 =====
@@ -23,7 +23,8 @@ export function renderAnalysisResult(result) {
   renderStructures(result.structures || []);
   renderKeyStats(result.metrics || {});
   renderEnergyChart(result.chart || {});
-
+  attachEnergyChartZoom(result.chart || {});
+  attachEnergyChartClick();
   // 4. Collapsible: computation details
   renderComputationDetails(result.basicInfo || {}, result.fileDetails || {});
   renderOptimizationProfile(result.optimizationProfile || {}, result.optimizationTrajectory || []);
@@ -91,8 +92,30 @@ function renderKeyStats(metrics) {
 
 // ===== Structures (3D viewer) =====
 function renderStructures(structures = []) {
-  state.structures = structures.length ? structures : [{ title: "输入/样例", atomCount: null, xyz: resolveMoleculeText() }];
+  state.structures = structures.length ? structures : [];
   const select = $("#structureSelect");
+
+  if (!state.structures.length) {
+    const molText = resolveMoleculeText();
+    if (molText) {
+      state.structures = [{ title: "分子结构", atomCount: null, xyz: molText }];
+    } else {
+      state.structures = [];
+    }
+  }
+
+  if (!state.structures.length) {
+    select.innerHTML = '<option>无结构数据</option>';
+    select.disabled = true;
+    $("#playFramesButton").disabled = true;
+    $("#playFramesButton").textContent = "无序列";
+    // Clear viewer
+    const viewerEl = $("#moleculeViewer");
+    if (viewerEl) viewerEl.innerHTML = `<div style="display:grid;place-items:center;height:340px;color:#667085;font-size:13px"><div style="font-size:28px;margin-bottom:8px">🧬</div><strong>未找到分子坐标</strong><p style="font-size:12px;margin-top:4px">请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件</p></div>`;
+    updateViewerInfoBar("");
+    return;
+  }
+
   select.innerHTML = state.structures.map((frame, index) =>
     `<option value="${index}">${frame.title || `帧 ${index + 1}`}${frame.atomCount ? ` · ${frame.atomCount} 原子` : ""}</option>`
   ).join("");
@@ -198,6 +221,20 @@ function renderComputationDetails(basic = {}, file = {}) {
   }
 }
 
+// Attach click-to-switch-structure on energy chart points
+function attachEnergyChartClick() {
+  const el = $("#energyChart");
+  if (!el) return;
+  el.querySelectorAll(".energy-point").forEach(pt => {
+    pt.addEventListener("click", () => {
+      const idx = Number(pt.dataset.index);
+      if (state.structures.length > idx) {
+        selectStructureFrame(idx, { updateMoleculeText: false });
+      }
+    });
+  });
+}
+
 // ===== Optimization =====
 function renderOptimizationProfile(profile = {}, trajectory = []) {
   clearOptimizationPlayback();
@@ -244,6 +281,17 @@ function renderOptimizationProfile(profile = {}, trajectory = []) {
     labels: steps.map(String), values,
     title: "总能量", unit: profile.unit || "Hartree", color: "#275cd8"
   });
+  // Attach zoom to mini chart (use simple expand)
+  const el = $("#optimizationChart");
+  if (el) {
+    el.style.cursor = "pointer";
+    el.title = "点击放大查看";
+    el.onclick = () => {
+      import("./charts.js").then(m => m.openChartZoom("总能量 / 优化步", () =>
+        `<div class="chart-empty" style="min-height:200px;display:grid;place-items:center"><p>${steps.length} 个能量点，无轨迹结构数据。</p></div>`
+      ));
+    };
+  }
 }
 
 function updateOptimizationViewer(index, { syncStructure = true } = {}) {
@@ -266,6 +314,7 @@ function updateOptimizationViewer(index, { syncStructure = true } = {}) {
     <div><span>结构</span><strong>${structure}</strong></div>`;
 
   $("#optimizationChart").innerHTML = renderOptimizationTrajectoryChart(trajectory, nextIndex);
+  attachOptimizationChartZoom(state.optimizationTrajectory, nextIndex);
   if (syncStructure && point.xyz) {
     if (Number.isInteger(point.frameIndex)) {
       selectStructureFrame(point.frameIndex, { updateMoleculeText: true });

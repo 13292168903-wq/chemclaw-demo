@@ -310,6 +310,18 @@
     </aside>
   </main>
 
+  <!-- Chart Zoom Modal -->
+  <div id="chartModal" class="chart-modal hidden">
+    <div class="chart-modal-backdrop"></div>
+    <div class="chart-modal-panel">
+      <div class="chart-modal-header">
+        <h3 id="chartModalTitle"></h3>
+        <button id="chartModalClose" class="chart-modal-close" aria-label="关闭">&times;</button>
+      </div>
+      <div id="chartModalBody" class="chart-modal-body"></div>
+    </div>
+  </div>
+
   <!-- Scripts (ES Modules) -->
   <script type="module" src="/js/main.js"></script>
 </body>

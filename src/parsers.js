@@ -45,6 +45,23 @@ export function parseGaussian(text) {
     result.multiplicity = parseInt(chargeMatch[2]);
   }
 
+  // Archive entry (compact summary at end of Gaussian files)
+  // Format: 1|1|UNPC-...|FOpt|RB3LYP|...|Version=...|HF=-267.239|Dipole=...
+  const archiveMatch = text.match(/\d\|\d\|UNPC[^\n]*/);
+  if (archiveMatch) {
+    const archiveLine = archiveMatch[0];
+    const hfMatch = archiveLine.match(/HF=(-?[\d.]+)/);
+    if (hfMatch) result.archiveHF = parseFloat(hfMatch[1]);
+    const dipoleMatch = archiveLine.match(/Dipole=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)/);
+    if (dipoleMatch && !result.dipole) {
+      result.dipole = Math.sqrt(
+        parseFloat(dipoleMatch[1])**2 + parseFloat(dipoleMatch[2])**2 + parseFloat(dipoleMatch[3])**2
+      ).toFixed(4);
+    }
+    const versionMatch = archiveLine.match(/Version=([^|]+)/);
+    if (versionMatch) result.gaussianVersion = versionMatch[1].trim();
+  }
+
   // SCF 能量：保留全部能量点，避免把单个物质误画成反应路径
   const scfMatches = [...text.matchAll(/SCF Done:\s*E\([^)]+\)\s*=\s*(-?\d+(?:\.\d+)?)/gi)];
   result.energies = scfMatches.map((m, index) => ({
@@ -52,6 +69,7 @@ export function parseGaussian(text) {
     hartree: parseFloat(m[1])
   })).filter(item => Number.isFinite(item.hartree));
   if (result.energies.length) result.scfEnergy = result.energies[result.energies.length - 1].hartree;
+  if (result.scfEnergy == null && result.archiveHF != null) result.scfEnergy = result.archiveHF;
 
   // 最终单点能 (ORCA 兼容)
   const finalMatch = text.match(/FINAL SINGLE POINT ENERGY\s+(-?[\d.]+)/i);
