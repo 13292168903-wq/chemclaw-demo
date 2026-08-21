@@ -1,7 +1,7 @@
 // ===== Main Entry Point =====
 import { state, $, $$ } from "./state.js";
 import { analyze, grade, fetchStatus } from "./api.js";
-import { extractMoleculeFromText, sampleDataset, sampleReport, sampleMolecule } from "./viewer.js";
+import { extractMoleculeFromText, sampleDataset, sampleReport, sampleMolecule, clearMoleculeViewer } from "./viewer.js";
 import { renderAnalysisResult, renderGradeResult, updateRoleUi, selectStructureFrame, stepOptimization, clearOptPlayback, updateOptViewer } from "./renderers.js";
 import { addMessage, askAgent } from "./chat.js";
 import { initTheme, toggleTheme } from "./theme.js";
@@ -67,6 +67,14 @@ async function handleAnalyze() {
   const btn = $("#analyzeButton");
   btn.disabled = true;
   btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> 分析中...';
+  clearOptPlayback();
+  state.framesPlaying = false;
+  state.vibrationPlaying = false;
+  state.structures = [];
+  clearMoleculeViewer({
+    message: "正在分析新文件",
+    detail: "已清除上一条分析的分子模型。"
+  });
 
   try {
     const moleculeText = $("#moleculeText").value.trim() || extractMoleculeFromText($("#studentReport").value);
@@ -135,10 +143,15 @@ $("#datasetFile").addEventListener("change", async () => {
     return;
   }
   $("#datasetText").value = text;
-  if (!$("#moleculeText").value.trim()) {
-    const extracted = extractMoleculeFromText(text);
-    if (extracted) $("#moleculeText").value = extracted;
-  }
+  $("#moleculeText").value = extractMoleculeFromText(text);
+  $("#moleculeFile").value = "";
+  state.structures = [];
+  state.analysisResult = null;
+  clearOptPlayback();
+  clearMoleculeViewer({
+    message: "已载入新计算文件",
+    detail: "等待分析新文件中的分子结构。"
+  });
 });
 
 // File upload: molecule

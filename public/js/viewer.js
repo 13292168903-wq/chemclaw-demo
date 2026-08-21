@@ -14,6 +14,7 @@ import { state, $ } from "./state.js";
 // ===== Mol* Viewer State =====
 let molstarViewer = null;
 let molstarInitPromise = null;
+let viewerLoadToken = 0;
 
 // ===== Element Colors (CPK-inspired, premium palette) =====
 const ELEMENT_COLORS = {
@@ -101,7 +102,14 @@ function applyViewerTheme(isDark) {
 
 // ===== Load Molecule into Viewer =====
 export function loadMoleculeToViewer(text, format = "auto") {
-  if (!text?.trim()) { renderMoleculeFallback(""); return; }
+  const loadToken = ++viewerLoadToken;
+  if (!text?.trim()) {
+    clearMoleculeViewer({
+      message: "未找到分子坐标",
+      detail: "请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件"
+    });
+    return;
+  }
   if (!state.viewerInitialized || !molstarViewer) { renderMoleculeFallback(text); return; }
 
   // Auto-detect format
@@ -111,12 +119,15 @@ export function loadMoleculeToViewer(text, format = "auto") {
   const pdbData = detectedFormat === "xyz" ? xyzToPdb(text) : text;
 
   // Use loadStructureFromData to load inline (no Blob URL needed)
+  clearMolstarStructures();
   molstarViewer.loadStructureFromData(pdbData, "pdb", {
     dataLabel: "Molecular Structure",
   }).then(() => {
+    if (loadToken !== viewerLoadToken) return;
     // Apply premium representation after loading
     setTimeout(() => applyPremiumRepresentation(), 300);
   }).catch(e => {
+    if (loadToken !== viewerLoadToken) return;
     console.warn("Mol* loadStructureFromData failed, trying loadStructureFromUrl fallback", e);
     // Fallback: try with Blob URL
     try {
@@ -126,8 +137,10 @@ export function loadMoleculeToViewer(text, format = "auto") {
         label: "Molecular Structure",
       }).then(() => {
         URL.revokeObjectURL(url);
+        if (loadToken !== viewerLoadToken) return;
         setTimeout(() => applyPremiumRepresentation(), 300);
       }).catch(e2 => {
+        if (loadToken !== viewerLoadToken) return;
         console.warn("Mol* Blob URL fallback also failed", e2);
         URL.revokeObjectURL(url);
         renderMoleculeFallback(text);
@@ -136,6 +149,39 @@ export function loadMoleculeToViewer(text, format = "auto") {
       renderMoleculeFallback(text);
     }
   });
+}
+
+// ===== Clear Viewer =====
+function clearMolstarStructures() {
+  const plugin = molstarViewer?.plugin;
+  if (!plugin) return;
+  try { plugin.clear?.(); } catch { /* best effort */ }
+  try { plugin.managers?.structure?.hierarchy?.clear?.(); } catch { /* best effort */ }
+  try { plugin.managers?.interactivity?.lociHighlights?.clearHighlights?.(); } catch { /* best effort */ }
+  try { plugin.managers?.structure?.selection?.clear?.(); } catch { /* best effort */ }
+  try { plugin.managers?.camera?.reset?.(); } catch { /* best effort */ }
+}
+
+export function clearMoleculeViewer({
+  message = "未找到分子坐标",
+  detail = "请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件"
+} = {}) {
+  viewerLoadToken++;
+  clearMolstarStructures();
+
+  const viewerEl = $("#moleculeViewer");
+  if (!viewerEl) return;
+
+  if (!state.viewerInitialized || !molstarViewer) {
+    viewerEl.innerHTML = `
+      <div style="display:grid;place-items:center;height:340px;color:#667085;font-size:13px;text-align:center;padding:20px">
+        <div>
+          <div style="font-size:28px;margin-bottom:8px">🧬</div>
+          <strong>${message}</strong>
+          <p style="font-size:12px;margin-top:4px">${detail}</p>
+        </div>
+      </div>`;
+  }
 }
 
 // ===== Apply Premium Representation =====

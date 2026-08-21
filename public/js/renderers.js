@@ -5,7 +5,7 @@
 //   updateRoleUi          → 教师/学生角色切换
 import { state, $, $$, labels } from "./state.js";
 import { renderEnergyChart, renderMiniLineChart, renderOptimizationTrajectoryChart, renderSpectrum, attachEnergyChartZoom, attachOptimizationChartZoom } from "./charts.js";
-import { initMoleculeViewer, loadMoleculeToViewer, loadFramesToViewer, resolveMoleculeText, xyzToPdb, parseXYZAtoms, computeBonds } from "./viewer.js";
+import { initMoleculeViewer, loadMoleculeToViewer, loadFramesToViewer, resolveMoleculeText, xyzToPdb, parseXYZAtoms, computeBonds, clearMoleculeViewer } from "./viewer.js";
 
 // ===== Main: 结果页渲染 =====
 export function renderAnalysisResult(result) {
@@ -109,9 +109,7 @@ function renderStructures(structures = []) {
     select.disabled = true;
     $("#playFramesButton").disabled = true;
     $("#playFramesButton").textContent = "无序列";
-    // Clear viewer
-    const viewerEl = $("#moleculeViewer");
-    if (viewerEl) viewerEl.innerHTML = `<div style="display:grid;place-items:center;height:340px;color:#667085;font-size:13px"><div style="font-size:28px;margin-bottom:8px">🧬</div><strong>未找到分子坐标</strong><p style="font-size:12px;margin-top:4px">请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件</p></div>`;
+    clearMoleculeViewer();
     updateViewerInfoBar("");
     return;
   }
@@ -120,6 +118,10 @@ function renderStructures(structures = []) {
     `<option value="${index}">${frame.title || `帧 ${index + 1}`}${frame.atomCount ? ` · ${frame.atomCount} 原子` : ""}</option>`
   ).join("");
   select.disabled = state.structures.length <= 1;
+  clearMoleculeViewer({
+    message: "正在加载分子结构",
+    detail: "已清除上一条分析的模型。"
+  });
   initMoleculeViewer();
 
   const pdbData = state.analysisResult?.pdbData;
