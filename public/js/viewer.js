@@ -1,55 +1,86 @@
-// ===== Mol* Viewer Module =====
-// Replaces 3Dmol.js with Mol* (molstar) for premium molecular visualization.
-// Mol* is the next-gen molecular viewer from RCSB PDB.
-//
-// Architecture:
-//   OpenClaw chemclaw-analyze Skill → generates PDB data (with bond info)
-//   Web Demo Backend → passes PDB string to frontend
-//   Frontend Mol* renderer → high-quality 3D visualization
-//
-// Data flow: XYZ (basic) or PDB (with bonds, from OpenClaw)
+// ===== Molecular viewer =====
+// Mol* is the primary renderer. It is loaded lazily (see index.html `defer`)
+// and only mounted when the browser can actually create a WebGL context —
+// Mol* otherwise injects its own English "WebGL does not seem to be
+// available" panel into the page, which is not something a student should see.
 
 import { state, $ } from "./state.js";
 
-// ===== Mol* Viewer State =====
 let molstarViewer = null;
 let molstarInitPromise = null;
 let viewerLoadToken = 0;
+let lastFallbackText = "";
 
-// ===== Element Colors (CPK-inspired, premium palette) =====
 const ELEMENT_COLORS = {
-  H: "#f0f2f5", C: "#2b2f36", N: "#275cd8", O: "#b42318",
-  F: "#16a34a", P: "#d97706", S: "#eab308", Cl: "#16a34a",
-  Br: "#92400e", I: "#581c87", Si: "#6b7280", B: "#fbbf24",
+  H: "#f1f5f9", C: "#334155", N: "#2563eb", O: "#dc2626",
+  F: "#16a34a", P: "#d97706", S: "#eab308", Cl: "#15803d",
+  Br: "#92400e", I: "#7c3aed", Si: "#64748b", B: "#f59e0b",
 };
 
-// ===== Covalent Radii (Angstrom) for bond inference =====
 const COVALENT_RADII = {
   H: 0.31, C: 0.76, N: 0.71, O: 0.66, F: 0.57,
   S: 1.05, P: 1.07, Cl: 1.02, Br: 1.20, I: 1.39,
   Si: 1.11, B: 0.84,
 };
 
-// ===== Initialize Mol* Viewer =====
-export function initMoleculeViewer() {
-  if (state.viewerInitialized && molstarViewer) return;
-  const container = $("#moleculeViewer");
-  if (!container) return;
+// ===== Capability check =====
+export function supportsWebGL() {
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+    if (!gl) return false;
 
-  // Check if molstar is loaded
-  if (typeof molstar === "undefined" || !molstar.Viewer) {
-    container.innerHTML = `
-      <div style="display:grid;place-items:center;height:340px;color:#667085;font-size:13px;text-align:center;padding:20px">
-        <div>
-          <div style="font-size:24px;margin-bottom:8px">🧬</div>
-          <div>Mol* 3D 查看器加载中...</div>
-          <div style="font-size:11px;margin-top:4px;color:#94a3b8">首次加载需下载约 4MB 渲染引擎</div>
-        </div>
-      </div>`;
-    return;
+    // A context can exist on software rasterizers (SwiftShader, llvmpipe) while
+    // Mol* still fails to initialise. Treat those as unsupported up front.
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || "");
+    const lose = gl.getExtension("WEBGL_lose_context");
+    if (lose) lose.loseContext();
+    if (/swiftshader|software|llvmpipe|basic render/i.test(renderer)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Mol* can inject its own English error panel after a failed context creation.
+// Keep the friendly 2D fallback and remove that panel if it appears.
+function installFallbackGuard(container) {
+  if (container.__fallbackGuard) return;
+  const observer = new MutationObserver(() => {
+    if (container.querySelector(".msp-error") || /WebGL does not seem to be available/i.test(container.textContent || "")) {
+      observer.disconnect();
+      container.innerHTML = "";
+      if (lastFallbackText) renderMoleculeFallback(lastFallbackText);
+    }
+  });
+  observer.observe(container, { childList: true, subtree: true });
+  container.__fallbackGuard = observer;
+  setTimeout(() => {
+    try { observer.disconnect(); } catch { /* already gone */ }
+    container.__fallbackGuard = null;
+  }, 4000);
+}
+
+// ===== Initialize =====
+export function initMoleculeViewer() {
+  if (state.viewerInitialized && molstarViewer) return Promise.resolve(molstarViewer);
+  const container = $("#moleculeViewer");
+  if (!container) return Promise.resolve(null);
+
+  if (!supportsWebGL()) {
+    // Do not even instantiate Mol*: it would render its own error UI.
+    state.viewerInitialized = false;
+    molstarViewer = null;
+    return Promise.resolve(null);
   }
 
-  // Prevent double initialization
+  if (typeof molstar === "undefined" || !molstar.Viewer) {
+    // Script still loading; the caller falls back to 2D for now.
+    state.viewerInitialized = false;
+    return Promise.resolve(null);
+  }
+
   if (molstarInitPromise) return molstarInitPromise;
 
   const dark = document.documentElement.classList.contains("dark");
@@ -62,7 +93,7 @@ export function initMoleculeViewer() {
     layoutShowLog: false,
     layoutShowLeftPanel: false,
     layoutShowSession: false,
-    viewportShowExpand: true,
+    viewportShowExpand: false,
     viewportShowSettings: false,
     viewportShowSelectionMode: false,
     viewportShowAnimation: false,
@@ -70,88 +101,81 @@ export function initMoleculeViewer() {
     collapseLeftPanel: true,
     collapseRightPanel: true,
     disableDragAndDrop: true,
-  }).then(viewer => {
+  }).then((viewer) => {
+    // Mol* can resolve while its canvas failed; verify before trusting it.
+    const failed = container.querySelector(".msp-error") || /WebGL does not seem to be available/i.test(container.textContent || "");
+    if (failed) throw new Error("WebGL unavailable");
+
     molstarViewer = viewer;
     state.viewer = viewer;
     state.viewerInitialized = true;
-
-    // Apply dark/light theme
     applyViewerTheme(dark);
 
+    // Keep the canvas in sync when the workbench changes width (drawer, tabs).
+    if (!container.__resizeObserver && "ResizeObserver" in window) {
+      const observer = new ResizeObserver(() => {
+        try { viewer.plugin?.layout?.events?.update?.emit("size"); } catch { /* best effort */ }
+      });
+      observer.observe(container);
+      container.__resizeObserver = observer;
+    }
+
+    document.dispatchEvent(new CustomEvent("viewer:ready"));
     return viewer;
-  }).catch(e => {
-    console.warn("Mol* init failed, falling back to SVG", e);
+  }).catch((error) => {
+    console.warn("Mol* unavailable, using 2D projection:", error?.message || error);
     molstarInitPromise = null;
+    molstarViewer = null;
+    state.viewer = null;
     state.viewerInitialized = false;
+    installFallbackGuard(container);
+    if (container.querySelectorAll("canvas").length || container.querySelector(".msp-error")) {
+      container.innerHTML = "";
+    }
     return null;
   });
 
   return molstarInitPromise;
 }
 
-// ===== Apply Theme to Viewer =====
 function applyViewerTheme(isDark) {
-  if (!molstarViewer?.plugin) return;
   try {
     const canvas = $("#moleculeViewer")?.querySelector("canvas");
-    if (canvas) {
-      canvas.style.background = isDark ? "#0a0f1a" : "#f8fbfc";
-    }
-  } catch { /* ignore */ }
+    if (canvas) canvas.style.background = isDark ? "#0a121f" : "#f7f9fb";
+  } catch { /* theme is cosmetic */ }
 }
 
-// ===== Load Molecule into Viewer =====
+// ===== Load =====
 export function loadMoleculeToViewer(text, format = "auto") {
   const loadToken = ++viewerLoadToken;
   if (!text?.trim()) {
     clearMoleculeViewer({
       message: "未找到分子坐标",
-      detail: "请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件"
+      detail: "请在左侧「分子坐标」中粘贴 XYZ，或上传含坐标的输出文件。",
     });
     return;
   }
-  if (!state.viewerInitialized || !molstarViewer) { renderMoleculeFallback(text); return; }
 
-  // Auto-detect format
+  if (!state.viewerInitialized || !molstarViewer) {
+    renderMoleculeFallback(text);
+    return;
+  }
+
   const detectedFormat = format === "auto" ? detectFormat(text) : format;
-
-  // Convert XYZ to PDB for better bond rendering
   const pdbData = detectedFormat === "xyz" ? xyzToPdb(text) : text;
 
-  // Use loadStructureFromData to load inline (no Blob URL needed)
   clearMolstarStructures();
-  molstarViewer.loadStructureFromData(pdbData, "pdb", {
-    dataLabel: "Molecular Structure",
-  }).then(() => {
-    if (loadToken !== viewerLoadToken) return;
-    // Apply premium representation after loading
-    setTimeout(() => applyPremiumRepresentation(), 300);
-  }).catch(e => {
-    if (loadToken !== viewerLoadToken) return;
-    console.warn("Mol* loadStructureFromData failed, trying loadStructureFromUrl fallback", e);
-    // Fallback: try with Blob URL
-    try {
-      const blob = new Blob([pdbData], { type: "chemical/x-pdb" });
-      const url = URL.createObjectURL(blob);
-      molstarViewer.loadStructureFromUrl(url, "pdb", false, {
-        label: "Molecular Structure",
-      }).then(() => {
-        URL.revokeObjectURL(url);
-        if (loadToken !== viewerLoadToken) return;
-        setTimeout(() => applyPremiumRepresentation(), 300);
-      }).catch(e2 => {
-        if (loadToken !== viewerLoadToken) return;
-        console.warn("Mol* Blob URL fallback also failed", e2);
-        URL.revokeObjectURL(url);
-        renderMoleculeFallback(text);
-      });
-    } catch {
+  molstarViewer.loadStructureFromData(pdbData, "pdb", { dataLabel: "Molecular Structure" })
+    .then(() => {
+      if (loadToken !== viewerLoadToken) return;
+      setTimeout(() => applyPremiumRepresentation(), 250);
+    })
+    .catch(() => {
+      if (loadToken !== viewerLoadToken) return;
       renderMoleculeFallback(text);
-    }
-  });
+    });
 }
 
-// ===== Clear Viewer =====
 function clearMolstarStructures() {
   const plugin = molstarViewer?.plugin;
   if (!plugin) return;
@@ -164,48 +188,37 @@ function clearMolstarStructures() {
 
 export function clearMoleculeViewer({
   message = "未找到分子坐标",
-  detail = "请在左侧粘贴 XYZ 坐标或上传含坐标的输出文件"
+  detail = "请在左侧「分子坐标」中粘贴 XYZ，或上传含坐标的输出文件。",
 } = {}) {
   viewerLoadToken++;
   clearMolstarStructures();
 
-  const viewerEl = $("#moleculeViewer");
-  if (!viewerEl) return;
-
+  const container = $("#moleculeViewer");
+  if (!container) return;
   if (!state.viewerInitialized || !molstarViewer) {
-    viewerEl.innerHTML = `
-      <div style="display:grid;place-items:center;height:340px;color:#667085;font-size:13px;text-align:center;padding:20px">
+    container.innerHTML = `
+      <div class="viewer-placeholder">
         <div>
-          <div style="font-size:28px;margin-bottom:8px">🧬</div>
-          <strong>${message}</strong>
-          <p style="font-size:12px;margin-top:4px">${detail}</p>
+          <strong>${escapeHtml(message)}</strong>
+          <p>${escapeHtml(detail)}</p>
         </div>
       </div>`;
   }
 }
 
-// ===== Apply Premium Representation =====
 function applyPremiumRepresentation() {
-  if (!molstarViewer?.plugin) return;
+  const plugin = molstarViewer?.plugin;
+  if (!plugin) return;
   try {
-    // Access the plugin's state to set ball-and-stick representation
-    const plugin = molstarViewer.plugin;
     const structures = plugin.managers.structure.hierarchy.current.structs;
-    if (structures.length > 0) {
-      const s = structures[0];
-      // Try to set ball-and-stick representation
-      plugin.managers.structure.component.setOptions(s, {
-        representation: "ball-and-stick",
-      });
+    if (structures.length) {
+      plugin.managers.structure.component.setOptions(structures[0], { representation: "ball-and-stick" });
     }
-  } catch { /* representation change is best-effort */ }
+  } catch { /* representation is best-effort */ }
 }
 
-// ===== Load Multiple Frames =====
 export function loadFramesToViewer(frames = []) {
   if (!state.viewerInitialized || !molstarViewer || frames.length < 2) return false;
-  // Load the first frame; molstar trajectory loading is complex
-  // so we use the simpler single-frame approach with manual switching
   if (frames[0]?.xyz) {
     loadMoleculeToViewer(frames[0].xyz, "xyz");
     return true;
@@ -213,65 +226,43 @@ export function loadFramesToViewer(frames = []) {
   return false;
 }
 
-// ===== Detect Data Format =====
+// ===== Formats =====
 function detectFormat(text) {
   const trimmed = text.trim();
-  if (trimmed.startsWith("HEADER") || trimmed.startsWith("ATOM") || trimmed.startsWith("HETATM")) {
-    return "pdb";
-  }
-  if (/^\d+\s*\n/.test(trimmed)) {
-    return "xyz";
-  }
-  return "xyz"; // default
+  if (trimmed.startsWith("HEADER") || trimmed.startsWith("ATOM") || trimmed.startsWith("HETATM")) return "pdb";
+  if (/^\d+\s*\n/.test(trimmed)) return "xyz";
+  return "xyz";
 }
 
-// ===== XYZ to PDB Converter =====
-// Converts XYZ format to PDB with explicit CONECT records.
-// This is what makes the 3D visualization high-quality:
-// XYZ has no bond info, PDB with CONNECT gives correct bonds.
 export function xyzToPdb(xyzText) {
   const atoms = parseXYZAtoms(xyzText);
   if (!atoms.length) return "";
-
   const bonds = computeBonds(atoms);
   let pdb = "";
-  const title = "ChemClaw - Generated by OpenClaw Skill";
-
+  const title = "ChemClaw structure";
   pdb += `HEADER    ${title}\n`;
   pdb += `TITLE     ${title}\n`;
-
   atoms.forEach((atom, i) => {
     const serial = String(i + 1).padStart(5);
     const name = atom.element.padEnd(4);
-    const resName = "MOL";
-    const chainId = "A";
-    const resSeq = String(1).padStart(4);
     const x = atom.x.toFixed(3).padStart(8);
     const y = atom.y.toFixed(3).padStart(8);
     const z = atom.z.toFixed(3).padStart(8);
-    const occupancy = "1.00";
-    const tempFactor = "0.00";
     const element = atom.element.padEnd(2);
-
-    pdb += `ATOM  ${serial} ${name} ${resName} ${chainId}${resSeq}    ${x}${y}${z}  ${occupancy}${tempFactor}          ${element}\n`;
+    pdb += `ATOM  ${serial} ${name} MOL A   1    ${x}${y}${z}  1.00  0.00          ${element}\n`;
   });
-
-  // CONECT records for bonds
   bonds.forEach(([i, j]) => {
-    const a1 = String(i + 1).padStart(5);
-    const a2 = String(j + 1).padStart(5);
-    pdb += `CONECT${a1}${a2}\n`;
+    pdb += `CONECT${String(i + 1).padStart(5)}${String(j + 1).padStart(5)}\n`;
   });
-
   pdb += "END\n";
   return pdb;
 }
 
-// ===== Parse XYZ Atoms =====
+// ===== XYZ parsing / bonds =====
 function parseXYZAtoms(xyzText = "") {
   const lines = xyzText.trim().split(/\r?\n/);
   const start = /^\d+$/.test(lines[0]?.trim()) ? 2 : 0;
-  return lines.slice(start).map(line => {
+  return lines.slice(start).map((line) => {
     const parts = line.trim().split(/\s+/);
     if (parts.length < 4 || !/^[A-Z][a-z]?$/.test(parts[0])) return null;
     const atom = { element: parts[0], x: Number(parts[1]), y: Number(parts[2]), z: Number(parts[3]) };
@@ -279,71 +270,94 @@ function parseXYZAtoms(xyzText = "") {
   }).filter(Boolean);
 }
 
-// ===== Compute Bonds from Interatomic Distances =====
+// Fallback for when only PDB data is available (Mol* receives PDB).
+function parsePdbAtoms(pdbText = "") {
+  return pdbText.split(/\r?\n/)
+    .filter((line) => /^(ATOM|HETATM)/.test(line))
+    .map((line) => {
+      const x = Number(line.slice(30, 38));
+      const y = Number(line.slice(38, 46));
+      const z = Number(line.slice(46, 54));
+      let element = line.slice(76, 78).trim();
+      if (!element) {
+        const name = line.slice(12, 16).trim();
+        element = (name.match(/^[A-Za-z]/)?.[0] || "C").toUpperCase();
+      }
+      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) ? { element, x, y, z } : null;
+    })
+    .filter(Boolean);
+}
+
 function computeBonds(atoms) {
   const bonds = [];
-  const tolerance = 1.28; // Bond detection tolerance factor
-
+  const tolerance = 1.28;
   for (let i = 0; i < atoms.length; i++) {
     for (let j = i + 1; j < atoms.length; j++) {
       const a = atoms[i], b = atoms[j];
-      const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
-      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
       const r1 = COVALENT_RADII[a.element] || 0.76;
       const r2 = COVALENT_RADII[b.element] || 0.76;
-      const maxDist = (r1 + r2) * tolerance;
-      if (dist > 0.25 && dist < maxDist) {
-        bonds.push([i, j]);
-      }
+      if (dist > 0.25 && dist < (r1 + r2) * tolerance) bonds.push([i, j]);
     }
   }
   return bonds;
 }
 
-// ===== SVG Fallback Renderer (for when Mol* fails to load) =====
+// ===== 2D fallback =====
 function renderMoleculeFallback(xyzText) {
-  const atoms = parseXYZAtoms(xyzText);
+  lastFallbackText = xyzText || "";
+  const container = $("#moleculeViewer");
+  if (!container) return;
+  let atoms = parseXYZAtoms(xyzText);
+  if (!atoms.length && /^(HEADER|ATOM|HETATM)/m.test(xyzText || "")) {
+    atoms = parsePdbAtoms(xyzText);
+  }
   if (!atoms.length) {
-    $("#moleculeViewer").innerHTML = `
-      <div style="display:grid;place-items:center;height:340px;color:#667085;text-align:center;padding:20px">
+    container.innerHTML = `
+      <div class="viewer-placeholder">
         <div>
-          <div style="font-size:28px;margin-bottom:8px">🧬</div>
-          <strong>未找到坐标数据</strong>
-          <p style="font-size:12px;margin-top:4px">请上传 .xyz 或 .pdb 文件，或粘贴坐标数据。</p>
+          <strong>未找到可用坐标</strong>
+          <p>请上传 .xyz 文件，或粘贴「元素 x y z」格式的坐标。</p>
         </div>
       </div>`;
     return;
   }
 
   const { width, height, projected } = projectAtoms2D(atoms);
-  const bonds = computeBonds(projected);
+  // Bond detection must run on the original 3D coordinates; `projected` has
+  // its x/y replaced by screen positions.
+  const bonds = computeBonds(atoms);
   const dark = document.documentElement.classList.contains("dark");
-  const bg = dark ? "#0a0f1a" : "#f8fbfc";
-  const bondColor = dark ? "#334155" : "#98a6b3";
+  const bondColor = dark ? "#475569" : "#a8b4c2";
+  const labelColor = dark ? "#0b1220" : "#ffffff";
 
-  $("#moleculeViewer").innerHTML = `
-    <svg class="molecule-fallback-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Molecular structure">
-      <rect width="${width}" height="${height}" rx="8" fill="${bg}"></rect>
-      ${bonds.map(([a, b]) => `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${bondColor}" stroke-width="4" stroke-linecap="round"></line>`).join("")}
-      ${projected.map(atom => `
-        <g transform="translate(${atom.x},${atom.y})">
-          <circle r="${atom.r}" fill="${atom.color}" stroke="${bg}" stroke-width="3"></circle>
-          <text y="4" text-anchor="middle" fill="#fff" font-size="10" font-weight="900">${atom.element}</text>
-        </g>
-      `).join("")}
+  container.innerHTML = `
+    <svg class="molecule-fallback-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="分子二维投影结构">
+      <title>分子二维投影</title>
+      ${bonds.map(([a, b]) => {
+        const from = projected[a], to = projected[b];
+        return `<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke="${bondColor}" stroke-width="5" stroke-linecap="round"/>`;
+      }).join("")}
+      ${projected.map((atom) => {
+        const fill = atom.element === "H" ? (dark ? "#94a3b8" : "#cbd5e1") : atom.color;
+        return `<g transform="translate(${atom.x},${atom.y})">
+          <circle r="${atom.r}" fill="${fill}" stroke="${dark ? "#0a121f" : "#f7f9fb"}" stroke-width="2"/>
+          ${atom.r >= 11 ? `<text y="4" text-anchor="middle" fill="${labelColor}" font-size="9" font-weight="700">${atom.element}</text>` : ""}
+        </g>`;
+      }).join("")}
     </svg>`;
+  container.querySelector("svg").style.height = "100%";
 }
 
-// ===== 2D Projection for SVG Fallback =====
 function projectAtoms2D(atoms) {
-  const width = 500, height = 340;
+  const width = 520, height = 360;
   const cx = atoms.reduce((s, a) => s + a.x, 0) / atoms.length;
   const cy = atoms.reduce((s, a) => s + a.y, 0) / atoms.length;
   const cz = atoms.reduce((s, a) => s + a.z, 0) / atoms.length;
   const cosY = Math.cos(0.75), sinY = Math.sin(0.75);
   const cosX = Math.cos(-0.55), sinX = Math.sin(-0.55);
 
-  const raw = atoms.map(atom => {
+  const raw = atoms.map((atom) => {
     const x0 = atom.x - cx, y0 = atom.y - cy, z0 = atom.z - cz;
     const x1 = x0 * cosY + z0 * sinY;
     const z1 = -x0 * sinY + z0 * cosY;
@@ -352,26 +366,27 @@ function projectAtoms2D(atoms) {
   });
 
   const span = Math.max(
-    Math.max(...raw.map(a => a.px)) - Math.min(...raw.map(a => a.px)),
-    Math.max(...raw.map(a => a.py)) - Math.min(...raw.map(a => a.py)),
-    1
+    Math.max(...raw.map((a) => a.px)) - Math.min(...raw.map((a) => a.px)),
+    Math.max(...raw.map((a) => a.py)) - Math.min(...raw.map((a) => a.py)),
+    1,
   );
-  const scale = Math.min(width, height) * 0.58 / span;
-  const radii = { H: 9, C: 14, N: 13, O: 13, F: 12, S: 15, P: 15, Cl: 15 };
+  const scale = Math.min(width, height) * 0.62 / span;
+  const radii = { H: 9, C: 15, N: 14, O: 14, F: 13, S: 16, P: 16, Cl: 16 };
 
   return {
-    width, height,
-    projected: raw.map(atom => ({
+    width,
+    height,
+    projected: raw.map((atom) => ({
       ...atom,
       x: Number((width / 2 + atom.px * scale).toFixed(1)),
       y: Number((height / 2 - atom.py * scale).toFixed(1)),
       color: ELEMENT_COLORS[atom.element] || "#7c8794",
       r: radii[atom.element] || 12,
-    }))
+    })),
   };
 }
 
-// ===== Extract Molecule Coordinates from Text =====
+// ===== Text helpers =====
 export function extractMoleculeFromText(text = "") {
   const coordPat = /^\s*([A-Z][a-z]?)\s+(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s+(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s+(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*$/;
   let best = [], cur = [];
@@ -387,15 +402,18 @@ export function extractMoleculeFromText(text = "") {
   return best.length ? `${best.length}\nextracted\n${best.join("\n")}` : "";
 }
 
-// ===== Resolve Molecule Text =====
 export function resolveMoleculeText() {
-  return $("#moleculeText").value.trim()
-    || extractMoleculeFromText($("#studentReport").value)
-    || extractMoleculeFromText($("#datasetText").value)
+  return $("#moleculeText")?.value.trim()
+    || extractMoleculeFromText($("#studentReport")?.value || "")
+    || extractMoleculeFromText($("#datasetText")?.value || "")
     || "";
 }
 
-// ===== Sample Data =====
+function escapeHtml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ===== Sample data =====
 export const sampleDataset = `# ChemClaw demo: Diels-Alder reaction TS analysis
 Method: B3LYP-D3BJ/def2-SVP, solvent = acetonitrile
 
@@ -438,5 +456,5 @@ H -1.240 -2.147 0.000
 C 0.698 -1.209 0.000
 H 1.240 -2.147 0.000`;
 
-// ===== Expose helpers for external use =====
 export { parseXYZAtoms, computeBonds };
+
