@@ -1,12 +1,15 @@
 import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { gzipSync } from "node:zlib";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { loadEnvFile } from "./src/env.js";
 import { createRoutes } from "./src/routes.js";
 import { resolveRuntime } from "./src/runtime.js";
+
+const gzipAsync = promisify(gzip);
 
 // .env 先加载，routes 里的 LLM 客户端才能读到 key。
 // 之前的 npm start 用 bash 的 export $(grep ...)，Windows 上根本起不来。
@@ -80,14 +83,18 @@ async function readBody(req) {
 async function readJsonBody(req) {
   const raw = await readBody(req);
   if (!raw.trim()) return {};
+  let parsed;
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") throw httpError(400, "请求体必须是 JSON 对象");
-    return parsed;
-  } catch (error) {
-    if (error.status) throw error;
+    parsed = JSON.parse(raw);
+  } catch {
     throw httpError(400, "请求体不是合法 JSON");
   }
+  // typeof [] === "object"：数组能骗过 `typeof` 检查，最后变成一个
+  // "什么都没提交"的 200 空分析。接口参数就该是对象，不是就 400。
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw httpError(400, "请求体必须是 JSON 对象");
+  }
+  return parsed;
 }
 
 /** 路径收敛：解析后必须仍落在 public/ 之内。 */
@@ -142,7 +149,9 @@ async function serveStatic(req, res, requestId, pathname) {
     if (cached && cached.key === key) {
       body = cached.buffer;
     } else {
-      body = gzipSync(await readFile(target));
+      // 异步 gzip：molstar.js 4.65 MB 压缩要 ~100ms，同步版本会把这段时间
+      // 里的所有请求（包括正在轮询的 /api/status）一起卡住。
+      body = await gzipAsync(await readFile(target));
       if (gzipCache.size >= GZIP_CACHE_MAX) gzipCache.delete(gzipCache.keys().next().value);
       gzipCache.set(target, { key, buffer: body });
     }
@@ -215,12 +224,41 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`端口 ${PORT} 已被占用：换一个 PORT，或先关掉正在运行的实例。`);
+    process.exit(1);
+  }
+  console.error("服务器启动失败:", error);
+  process.exit(1);
+});
+
+// 演示现场常用 Ctrl+C：不处理的话，正在跑的 openclaw 子进程和临时目录
+// 会留在后台。close() 停止接收新连接，等存量请求收尾。
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`\n收到 ${signal}，正在关闭…`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5_000).unref();
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("unhandledRejection", (reason) => {
+  // 监听回调是 async 的，未捕获的 rejection 在 Node 15+ 会直接杀进程；
+  // 这里至少把原因打出来，而不是"服务凭空消失"。
+  console.error("未处理的 Promise 拒绝:", reason);
+});
+
 server.listen(PORT, HOST, async () => {
   const runtime = await resolveRuntime({ refresh: true });
   console.log(`ChemClaw running at http://localhost:${PORT}`);
   console.log(`Agent: ${runtime.label}`);
   if (runtime.openclaw.available) {
-    console.log(`Skills: chemclaw-analyze, chemclaw-grade`);
+    console.log(runtime.skills.length
+      ? `Skills: ${runtime.skills.join(", ")}`
+      : "Skills: 未检测到 chemclaw 技能（运行 npm run install:skills 安装）");
   } else {
     console.log(`OpenClaw: 未启用（${runtime.openclaw.reason}）`);
   }

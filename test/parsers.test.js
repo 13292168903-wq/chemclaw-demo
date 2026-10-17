@@ -107,3 +107,36 @@ test("parseAny: 无标志位时也不会把 Gaussian 判成 ORCA", () => {
   const parsed = parseAny(gaussianLog);
   assert.equal(parsed.type, "gaussian");
 });
+
+test("Gaussian: 没有 HOMO/LUMO 时必须是 undefined，不是 NaN", () => {
+  // 回归测试：parseFloat(undefined) === NaN，而 NaN !== undefined，
+  // 旧实现的 `=== undefined` 兜底永不触发，最终把 "gap = NaN eV" 送进结论句。
+  const log = [
+    "#p opt freq b3lyp/6-31g(d)",
+    "",
+    "Title",
+    "",
+    "0 1",
+    "SCF Done:  E(RB3LYP) =  -40.5143712     A.U. after    8 cycles",
+    "Normal termination of Gaussian 16",
+  ].join("\n");
+
+  const parsed = parseGaussian(log);
+  assert.equal(parsed.homo, undefined);
+  assert.equal(parsed.lumo, undefined);
+  assert.equal(parsed.gap, undefined);
+  assert.ok(!Number.isNaN(parsed.homo));
+});
+
+test("Gaussian: Alpha occ/virt 列表能补上显式标注缺失的轨道能量", () => {
+  const log = [
+    "#p sp b3lyp/6-31g(d)",
+    " Alpha  occ. eigenvalues --  -19.14  -10.22   -5.90",
+    " Alpha virt. eigenvalues --    1.02   2.35",
+  ].join("\n");
+
+  const parsed = parseGaussian(log);
+  assert.equal(parsed.homo, -5.90);
+  assert.equal(parsed.lumo, 1.02);
+  assert.equal(parsed.gap, 6.92);
+});

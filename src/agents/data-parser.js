@@ -2,6 +2,7 @@
 
 import { parseAny, detectCalcType, buildFileDetails } from "../parsers.js";
 import { extractJSON } from "../utils.js";
+import { normalizeMetrics } from "../schema.js";
 
 export class DataParserAgent {
   constructor(llm) {
@@ -9,6 +10,11 @@ export class DataParserAgent {
     this.llm = llm;
   }
 
+  /**
+   * via 记录这一次"结果到底是谁算的"：ai 还是本地规则。
+   * 编排器据此上报 mode —— 不能只看"配置里有没有 llm"，
+   * 因为 AI 失败后这里会静默降级。
+   */
   async analyze(context) {
     const { datasetText } = context.raw;
     if (!datasetText?.trim()) return this.emptyResult("未提供计算数据");
@@ -62,14 +68,14 @@ export class DataParserAgent {
     }
 
     const finding = this.summarizeFindings(metrics, parsed);
-    return { agent: this.name, metrics, parsed, findings: finding, warnings };
+    return { agent: this.name, via: "local", metrics, parsed, findings: finding, warnings };
   }
 
   summarizeFindings(metrics, parsed) {
     const parts = [];
     if (metrics.calculationType) parts.push(`识别为 ${metrics.calculationType}`);
-    if (metrics.scfEnergy) parts.push(`SCF 能量 ${metrics.scfEnergy.toFixed(6)} Hartree`);
-    if (metrics.homo !== undefined && metrics.lumo !== undefined) {
+    if (Number.isFinite(metrics.scfEnergy)) parts.push(`SCF 能量 ${metrics.scfEnergy.toFixed(6)} Hartree`);
+    if (Number.isFinite(metrics.homo) && Number.isFinite(metrics.lumo)) {
       parts.push(`HOMO/LUMO: ${metrics.homo} / ${metrics.lumo} eV (gap: ${metrics.gap} eV)`);
     }
     if (metrics.frequencies.length > 0) parts.push(`频率分析包含 ${metrics.frequencies.length} 个模式`);
@@ -84,7 +90,7 @@ export class DataParserAgent {
   }
 
   emptyResult(reason) {
-    return { agent: this.name, metrics: {}, findings: reason, warnings: [reason] };
+    return { agent: this.name, via: "local", metrics: {}, findings: reason, warnings: [reason] };
   }
 
   async analyzeWithAI(context) {
@@ -103,6 +109,10 @@ export class DataParserAgent {
 ${context.raw.datasetText?.slice(0, 8000)}`
     );
     const json = extractJSON(response);
-    return { agent: this.name, metrics: json, findings: json.findings, warnings: json.warnings };
+    // 模型返回的 JSON 不可信：数值可能是字符串、数组可能是对象。
+    // 这里收敛成固定形状，下游才敢直接 .toFixed() / .length。
+    const metrics = normalizeMetrics(json);
+    const warnings = Array.isArray(json.warnings) ? json.warnings.map(String).slice(0, 8) : [];
+    return { agent: this.name, via: "ai", metrics, findings: String(json.findings || "").slice(0, 500), warnings };
   }
 }

@@ -1,6 +1,17 @@
 // 计算化学输出文件解析器
 // 支持 Gaussian、ORCA、VASP 及通用格式
 
+/**
+ * 正则匹配结果 → 有限数；没匹配到 / 抓到非数值时返回 undefined。
+ * 刻意不返回 NaN：这一层的所有调用方都用 `!== undefined` / `isFinite`
+ * 判断"有没有解析到"，NaN 会让两者同时失效。
+ */
+function matchedNumber(match) {
+  if (!match?.[1]) return undefined;
+  const value = Number.parseFloat(match[1]);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 export function parseGaussian(text) {
   const result = {
     type: "gaussian",
@@ -54,9 +65,13 @@ export function parseGaussian(text) {
     if (hfMatch) result.archiveHF = parseFloat(hfMatch[1]);
     const dipoleMatch = archiveLine.match(/Dipole=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)/);
     if (dipoleMatch && !result.dipole) {
-      result.dipole = Math.sqrt(
-        parseFloat(dipoleMatch[1])**2 + parseFloat(dipoleMatch[2])**2 + parseFloat(dipoleMatch[3])**2
-      ).toFixed(4);
+      // 保持 number 类型：同一个字段在另一条分支里是 parseFloat 的结果，
+      // 这里若返回字符串，下游 `typeof` / 算术就会两套行为。
+      result.dipole = Number(
+        Math.sqrt(
+          parseFloat(dipoleMatch[1])**2 + parseFloat(dipoleMatch[2])**2 + parseFloat(dipoleMatch[3])**2
+        ).toFixed(4)
+      );
     }
     const versionMatch = archiveLine.match(/Version=([^|]+)/);
     if (versionMatch) result.gaussianVersion = versionMatch[1].trim();
@@ -81,26 +96,30 @@ export function parseGaussian(text) {
   if (dipoleMatch) result.dipole = parseFloat(dipoleMatch[1]);
 
   // 轨道能量 — 先尝试显式 HOMO/LUMO 标注
-  result.homo = parseFloat(text.match(/(?:^|\n)\s*HOMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im)?.[1]);
-  result.lumo = parseFloat(text.match(/(?:^|\n)\s*LUMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im)?.[1]);
+  // 注意：匹配失败时必须得到 undefined，不能是 NaN —— parseFloat(undefined)
+  // 返回 NaN，而 NaN 不等于 undefined，下面"再尝试 Alpha occ"的兜底和
+  // 所有下游的 `!== undefined` 判断都会被它骗过去，最终把 "gap = NaN eV"
+  // 端到端送进结论句。
+  result.homo = matchedNumber(text.match(/(?:^|\n)\s*HOMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im));
+  result.lumo = matchedNumber(text.match(/(?:^|\n)\s*LUMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im));
 
   // 再尝试 Gaussian Alpha occ/virt 格式
   if (result.homo === undefined) {
     const alphaOccMatch = text.match(/Alpha\s+occ\. eigenvalues\s+--\s+(.+)/i);
     if (alphaOccMatch) {
-      const values = alphaOccMatch[1].trim().split(/\s+/).map(parseFloat).filter(n => !isNaN(n));
+      const values = alphaOccMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
       if (values.length > 0) result.homo = values[values.length - 1];
     }
   }
   if (result.lumo === undefined) {
     const alphaVirtMatch = text.match(/Alpha\s+virt\. eigenvalues\s+--\s+(.+)/i);
     if (alphaVirtMatch) {
-      const values = alphaVirtMatch[1].trim().split(/\s+/).map(parseFloat).filter(n => !isNaN(n));
+      const values = alphaVirtMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
       if (values.length > 0) result.lumo = values[0];
     }
   }
 
-  if (result.homo !== undefined && result.lumo !== undefined) {
+  if (Number.isFinite(result.homo) && Number.isFinite(result.lumo)) {
     result.gap = parseFloat((result.lumo - result.homo).toFixed(4));
   }
 

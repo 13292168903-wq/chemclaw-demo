@@ -35,7 +35,11 @@ export class LLMClient {
       }
 
       const data = await response.json();
-      return data.choices?.[0]?.message?.content || "";
+      const content = data.choices?.[0]?.message?.content || "";
+      // 200 但内容为空是最危险的"成功"：上层会当成 AI 结果继续用，
+      // 最后渲染出一张空卡片还标着"AI 生成"。这里当失败处理，交给降级链路。
+      if (!String(content).trim()) throw new Error("LLM 返回空内容");
+      return content;
     } finally {
       clearTimeout(timer);
     }

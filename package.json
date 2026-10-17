@@ -1,13 +1,14 @@
 {
   "name": "chemclaw-demo",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
   "description": "ChemClaw: 面向计算化学科研训练的多智能体教学助教",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "install:skills": "node scripts/install-skills.mjs"
   },
   "engines": {
     "node": ">=18"

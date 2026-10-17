@@ -7,7 +7,7 @@
 // 三者可能同时对不上（开机时 OpenClaw 没起来 → 之后永远认为它不在，
 // 但状态接口又说它在）。这里只保留一套探测与缓存，其他模块只读。
 
-import { probeOpenClaw } from "./openclaw-bridge.js";
+import { probeOpenClaw, listInstalledSkills } from "./openclaw-bridge.js";
 
 /** 探测结果缓存时长：CLI 探测要 ~50-200ms，不能每个请求都做。 */
 const TTL_MS = 30_000;
@@ -36,13 +36,15 @@ function llmConfig() {
 
 async function detect() {
   const llm = llmConfig();
-  const probe = await probeOpenClaw();
+  const [probe, skills] = await Promise.all([probeOpenClaw(), listInstalledSkills()]);
 
   const provider = probe.available ? "openclaw" : llm ? llm.provider : "local";
   return {
     provider,
     llm,
     openclaw: probe,
+    // 实际装了的技能，不是"文档里写了的那两个"
+    skills,
     // 给人看的一句话，启动日志和状态接口共用
     label: provider === "openclaw"
       ? `OpenClaw (${probe.version || "Qwen3_6"})`
@@ -78,6 +80,7 @@ export async function resolveRuntime({ refresh = false } = {}) {
 
 /** /api/status 的响应体。字段名保持与旧前端兼容。 */
 export function describeRuntime(runtime) {
+  const skills = runtime.skills || [];
   return {
     ok: true,
     agent: runtime.provider,
@@ -85,7 +88,15 @@ export function describeRuntime(runtime) {
     openclaw: runtime.openclaw.available,
     // 为什么不是 OpenClaw —— 没有它，演示现场只能干看着"本地演示模式"
     openclawReason: runtime.openclaw.available ? null : runtime.openclaw.reason,
-    skills: runtime.openclaw.available ? ["chemclaw-analyze", "chemclaw-grade"] : [],
+    // 这里以前是硬编码的两个名字，CLI 在就宣称技能在。现在只报真实装了的；
+    // skillsReady 把"能调用"和"装了"分开说，缺技能也算一种降级原因。
+    skills,
+    skillsReady: runtime.openclaw.available && skills.length > 0,
+    skillsReason: !runtime.openclaw.available
+      ? runtime.openclaw.reason
+      : skills.length === 0
+        ? "未检测到 chemclaw-analyze / chemclaw-grade（运行 npm run install:skills 安装）"
+        : null,
     llm: runtime.llm ? { provider: runtime.llm.provider, model: runtime.llm.model } : null,
     label: runtime.label,
     checkedAt: runtime.checkedAt,

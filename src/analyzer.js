@@ -145,6 +145,8 @@ export function createAnalyzer({ llm = null } = {}) {
             message: buildGradePrompt({ report: input.studentReport, rubric: null }),
             sessionId: `chemclaw-grade-${Date.now()}`,
             timeout: OPENCLAW_TIMEOUT,
+            skill: "chemclaw-grade",
+            fileLabel: "report.txt",
           }),
           rules.runGrading(input),
         ]);

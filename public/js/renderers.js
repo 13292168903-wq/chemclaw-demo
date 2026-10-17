@@ -63,11 +63,15 @@ export function renderAnalysisResult(result) {
 }
 
 function renderHero(result) {
+  // hybrid = 部分 Agent 走了 AI、其余降级到本地规则。以前这种情况会被
+  // 一律标成"AI 智能体"，现在如实说明混合来源。
   const modeText = result.mode === "openclaw"
     ? `OpenClaw · ${result.openclawModel || "Qwen"}`
     : result.mode === "ai-agent"
       ? `AI 智能体${result.model ? ` · ${result.model}` : ""}`
-      : "本地演示";
+      : result.mode === "hybrid"
+        ? `AI + 本地规则${result.aiAgentCount ? `（${result.aiAgentCount}/${result.agentCount || 3}）` : ""}`
+        : "本地演示";
   $("#resultMode").textContent = modeText;
   const stamp = result.analyzedAt || "";
   $("#resultTime").textContent = stamp.startsWith("上次分析")
@@ -456,7 +460,7 @@ function renderInterpretation(result) {
     content.innerHTML = full ? formatInterpretationText(full) : "";
     details.classList.toggle("hidden", !full);
   } else {
-    meta.textContent = `${findings} 个智能体协同 · ${result.mode === "ai-agent" ? "AI 生成" : "本地规则"}`;
+    meta.textContent = `${findings} 个智能体协同 · ${modeSourceLabel(result)}`;
     summary.innerHTML = "";
     // Local mode returns three short findings; show them inline instead of
     // hiding them behind an extra click.
@@ -598,7 +602,14 @@ function renderScore(result) {
 function gradingModeLabel(result) {
   if (result.mode === "openclaw") return "OpenClaw 批改";
   if (result.mode === "ai-agent") return "AI 批改";
+  if (result.mode === "hybrid") return "AI + 本地规则批改";
   return "本地启发式自检（关键词规则，非人工评分）";
+}
+
+function modeSourceLabel(result) {
+  if (result.mode === "ai-agent") return "AI 生成";
+  if (result.mode === "hybrid") return "AI + 本地规则";
+  return "本地规则";
 }
 
 function renderGradingContent(result) {

@@ -1,6 +1,7 @@
 // Agent 2: 化学解释智能体
 import { conceptCards } from "../knowledge.js";
 import { extractJSON } from "../utils.js";
+import { normalizeExplanations } from "../schema.js";
 
 export class ChemicalExplainerAgent {
   constructor(llm) {
@@ -11,7 +12,7 @@ export class ChemicalExplainerAgent {
   async analyze(context) {
     const metrics = context.metrics || {};
     if (Object.keys(metrics).length === 0) {
-      return { agent: this.name, explanations: [], summary: "无计算指标可供解释" };
+      return { agent: this.name, via: "local", explanations: [], summary: "无计算指标可供解释" };
     }
     if (this.llm) {
       try { return await this.analyzeWithAI(context); }
@@ -32,7 +33,7 @@ export class ChemicalExplainerAgent {
         teachingHint: conceptCards.imaginaryFrequency.teaching
       });
     }
-    if (metrics.gap !== undefined && metrics.gap !== null) {
+    if (Number.isFinite(metrics.gap)) {
       explanations.push({
         topic: conceptCards.homoLumoGap.title,
         level: "电子结构",
@@ -41,7 +42,7 @@ export class ChemicalExplainerAgent {
       });
     }
     const barrier = metrics.barrier ?? metrics.energySpan;
-    if (barrier) {
+    if (Number.isFinite(barrier)) {
       explanations.push({
         topic: conceptCards.activationBarrier.title,
         level: "反应动力学",
@@ -49,7 +50,7 @@ export class ChemicalExplainerAgent {
         teachingHint: conceptCards.activationBarrier.teaching
       });
     }
-    if (metrics.adsorption !== undefined && metrics.adsorption !== null) {
+    if (Number.isFinite(metrics.adsorption)) {
       explanations.push({
         topic: conceptCards.adsorptionEnergy.title,
         level: "表面化学",
@@ -57,7 +58,7 @@ export class ChemicalExplainerAgent {
         teachingHint: conceptCards.adsorptionEnergy.teaching
       });
     }
-    if (metrics.dipole) {
+    if (Number.isFinite(metrics.dipole)) {
       explanations.push({
         topic: "分子极性",
         level: "分子性质",
@@ -70,7 +71,7 @@ export class ChemicalExplainerAgent {
       ? `从 ${explanations.length} 个维度完成了化学解释：${explanations.map(e => e.topic).join("、")}`
       : "当前数据不足以生成化学解释";
 
-    return { agent: this.name, explanations, summary };
+    return { agent: this.name, via: "local", explanations, summary };
   }
 
   async analyzeWithAI(context) {
@@ -86,6 +87,13 @@ export class ChemicalExplainerAgent {
 学生报告：${context.raw?.studentReport?.slice(0, 1000) || "无"}`
     );
     const json = extractJSON(response);
-    return { agent: this.name, ...json };
+    const explanations = normalizeExplanations(json.explanations);
+    if (!explanations.length) throw new Error("AI 未返回可用的化学解释");
+    return {
+      agent: this.name,
+      via: "ai",
+      explanations,
+      summary: String(json.summary || `从 ${explanations.length} 个维度完成了化学解释`).slice(0, 300)
+    };
   }
 }

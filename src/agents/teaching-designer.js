@@ -1,6 +1,7 @@
 // Agent 3: 教学设计智能体
 import { quizTemplates, buildLearningGoals } from "../knowledge.js";
 import { extractJSON } from "../utils.js";
+import { normalizeTeaching } from "../schema.js";
 
 export class TeachingDesignerAgent {
   constructor(llm) {
@@ -32,7 +33,7 @@ export class TeachingDesignerAgent {
       { topic: "室温反应可行性", benchmark: "10-25 kcal/mol 课堂讨论区间", note: "需结合温度和阿伦尼乌斯公式。" },
       { topic: "吸附能 Sabatier 原理", benchmark: "过弱不易活化，过强不利脱附", note: "催化分析强调火山图趋势。" }
     ];
-    return { agent: this.name, learningGoals, learningPath, quiz, researchSuggestions, literatureBenchmarks: benchmarks };
+    return { agent: this.name, via: "local", learningGoals, learningPath, quiz, researchSuggestions, literatureBenchmarks: benchmarks };
   }
 
   generateQuiz(metrics) {
@@ -43,7 +44,7 @@ export class TeachingDesignerAgent {
       rubric: "说明一阶鞍点概念：沿反应坐标方向曲率为负，其他方向为正。仅凭虚频不足以证明，需 IRC 验证。"
     });
     const barrier = metrics.barrier ?? metrics.energySpan;
-    if (barrier) {
+    if (Number.isFinite(barrier)) {
       quiz.push({
         type: "数据题",
         question: `若能垒为 ${barrier} kcal/mol，如何判断该反应在室温下是否可能发生？`,
@@ -55,7 +56,7 @@ export class TeachingDesignerAgent {
       question: "如果要证明取代基效应是真实原因而非计算误差，你会设计哪些对照计算？",
       rubric: "应包含不同电子效应取代基、相同计算级别、构象一致性控制、可能的 Hammett 分析。"
     });
-    if (metrics.gap) {
+    if (Number.isFinite(metrics.gap)) {
       quiz.push({
         type: "讨论题",
         question: `HOMO-LUMO gap = ${metrics.gap} eV，对前线轨道理论和反应活性有什么启示？`,
@@ -70,7 +71,7 @@ export class TeachingDesignerAgent {
     if (metrics.imaginaryFrequencies?.length > 0) suggestions.push("补做 IRC 计算，确认虚频方向连接反应物与产物。");
     suggestions.push("设置供电子/吸电子取代基对照组，比较能垒与 HOMO-LUMO gap 的相关性。");
     suggestions.push("用更高基组或 DLPNO-CCSD(T) 单点能校正验证能量排序稳定性。");
-    if (metrics.dipole) suggestions.push("加入溶剂模型（PCM/SMD）敏感性分析，比较气相与溶液相能垒差异。");
+    if (Number.isFinite(metrics.dipole)) suggestions.push("加入溶剂模型（PCM/SMD）敏感性分析，比较气相与溶液相能垒差异。");
     suggestions.push("对关键过渡态做振动模式动画和成键分析，用于课堂教学展示。");
     return suggestions;
   }
@@ -91,6 +92,8 @@ export class TeachingDesignerAgent {
 化学解释：${JSON.stringify(context.explanations?.slice(0, 2), null, 2)}`
     );
     const json = extractJSON(response);
-    return { agent: this.name, ...json };
+    const teaching = normalizeTeaching(json);
+    if (!teaching.learningPath.length) throw new Error("AI 未返回学习路径");
+    return { agent: this.name, via: "ai", ...teaching };
   }
 }

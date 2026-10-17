@@ -20,7 +20,12 @@ export function loadEnvFile(file = path.join(projectRoot, ".env")) {
   if (!existsSync(file)) return [];
   const loaded = [];
 
-  for (const rawLine of readFileSync(file, "utf8").split(/\r?\n/)) {
+  // 去掉 UTF-8 BOM：Windows 记事本保存的 .env 会带 \uFEFF，
+  // 不去掉的话第一行键名变成 "\uFEFFDEEPSEEK_API_KEY"，正则校验失败后被
+  // 静默跳过 —— 现象是"配了 key 却一直走本地演示模式"，而且没有任何报错。
+  const raw = readFileSync(file, "utf8").replace(/^\uFEFF/, "");
+
+  for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 

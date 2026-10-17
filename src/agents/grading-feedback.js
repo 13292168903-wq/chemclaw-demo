@@ -1,6 +1,7 @@
 // Agent 4: 批改反馈智能体
 import { rubricDimensions } from "../knowledge.js";
 import { extractJSON } from "../utils.js";
+import { normalizeGrading, normalizeRubric } from "../schema.js";
 
 export class GradingFeedbackAgent {
   constructor(llm) {
@@ -52,6 +53,7 @@ export class GradingFeedbackAgent {
 
     return {
       agent: this.name,
+      via: "local",
       grading: {
         score: totalScore,
         strengths: strengths.length > 0 ? strengths : ["可结合计算结果开始批改训练"],
@@ -109,6 +111,10 @@ export class GradingFeedbackAgent {
 计算指标：${JSON.stringify(context.metrics, null, 2)}`
     );
     const json = extractJSON(response);
-    return { agent: this.name, ...json };
+    const grading = normalizeGrading(json.grading);
+    const rubric = normalizeRubric(json.rubric);
+    // 没有分数就没有批改结论：让调用方降级到本地规则，而不是渲染一张空评分卡。
+    if (grading.score === null) throw new Error("AI 未返回可用的评分");
+    return { agent: this.name, via: "ai", grading, rubric };
   }
 }

@@ -51,10 +51,19 @@ chemclaw-demo/
 │   │   ├── teaching-designer.js   # Agent 3: 教学设计 & 出题
 │   │   └── grading-feedback.js    # Agent 4: 实验报告批改
 │   ├── parsers.js                 # Gaussian / ORCA / 通用格式解析器
+│   ├── schema.js                  # LLM 输出的数据契约（数字/数组归一化）
 │   ├── knowledge.js               # 化学知识库 & Rubric 模板
-│   ├── orchestrator.js            # 多智能体编排器
+│   ├── orchestrator.js            # 多智能体编排器（mode 按实际执行路径上报）
 │   └── llm.js                     # LLM 客户端
-├── test/                          # node:test（解析器 / 结构 / 适配层 / env）
+├── skills/                        # OpenClaw 技能本体（可直接安装）
+│   ├── chemclaw-analyze/
+│   │   ├── SKILL.md               # 何时触发、输出契约、化学判据
+│   │   └── scripts/analyze.mjs    # 复用 src/parsers.js 的确定性解析
+│   └── chemclaw-grade/
+│       ├── SKILL.md
+│       └── scripts/grade.mjs      # 复用 src/agents/grading-feedback.js
+├── scripts/install-skills.mjs     # 把 skills/ 铺到 ~/.openclaw/workspace/skills/
+├── test/                          # node:test（解析器 / 结构 / 适配层 / env / schema / 编排 / 技能）
 ├── data/samples/                  # 样例数据
 ├── docs/                          # 参赛材料、评审截图、改进计划
 │   ├── competition/
@@ -124,15 +133,27 @@ http://localhost:5173
 
 ### 使用 OpenClaw（可选，接入后走赛事要求的 Agent 链路）
 
+两个技能已经随仓库提供（`skills/`），不需要手工拷贝：
+
 ```bash
 npm install -g openclaw
-# 将 chemclaw-analyze / chemclaw-grade 放入 ~/.openclaw/workspace/skills/
+npm run install:skills          # 复制到 ~/.openclaw/workspace/skills/ 并写入仓库路径
 ```
 
-服务启动日志和 `/api/status` 会直接说明当前模式与原因：
+技能脚本复用仓库内的解析器与批改逻辑，因此同一份文件在网页和 OpenClaw
+对话里得到的数字一致。也可以单独运行，用于排查链路问题：
+
+```bash
+node skills/chemclaw-analyze/scripts/analyze.mjs data/samples/diels-alder-ts.log
+node skills/chemclaw-grade/scripts/grade.mjs <报告.txt> --metrics <analyze 输出的 JSON>
+```
+
+服务启动日志和 `/api/status` 会直接说明当前模式与原因，`skills` 字段只报
+**真实装了的**技能（不再是硬编码的两个名字）：
 
 ```json
-{"agent":"local","openclaw":false,"openclawReason":"未安装 openclaw CLI（PATH 中找不到）"}
+{"agent":"local","openclaw":false,"skills":[],"skillsReady":false,
+ "openclawReason":"未安装 openclaw CLI（PATH 中找不到）"}
 ```
 
 ### 测试
@@ -164,9 +185,38 @@ npm test        # node:test，无外部依赖
 - **AI**：OpenClaw 框架（Qwen3_6）→ 降级 DeepSeek / OpenAI API → 降级本地规则
 - **3D 渲染**：Mol*（按需加载）+ 2D 投影兜底（无 WebGL 时）
 - **图表**：手写 SVG（能量曲线 / 优化轨迹 / 红外光谱）
-- **测试**：`node:test`（34 个用例，覆盖解析器 / 结构几何 / OpenClaw 适配 / .env）
+- **测试**：`node:test`（58 个用例，覆盖解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本）
 
 ## 开发报告
+
+### v2.3（2026-10-17）
+
+**技能本体入仓**
+- 新增 `skills/chemclaw-analyze` 与 `skills/chemclaw-grade`（SKILL.md + 执行脚本），
+  不再是"文档里声称已封装、仓库里查无此物"
+- `npm run install:skills` 一键铺到 `~/.openclaw/workspace/skills/`，并写入 `.chemclaw-root`
+  让技能脚本能回到仓库复用 `src/parsers.js`
+- 技能脚本零依赖、可单独执行，可用 `node scripts/analyze.mjs <file>` 排查链路
+
+**数值与契约**
+- 修复 HOMO/LUMO 解析：`parseFloat(undefined)` 得到 NaN，导致 `=== undefined` 的兜底永不触发，
+  最终把「gap = NaN eV，gap 较大」端到端送进结论句。现在缺失即 `undefined`
+- 新增 `src/schema.js`：LLM 返回的 JSON 先收敛（字符串数字→number、非法数组→[]），
+  避免 `thermo.zpe.toFixed is not a function` 这类 500
+- LLM 返回 200 但内容为空时按失败处理，不再伪装成"AI 成功"
+
+**诚实性**
+- `mode` 由实际执行路径（每个 Agent 的 `via`）上报：全部 AI → `ai-agent`，
+  部分降级 → `hybrid`，全部降级 → `local-demo`；界面同步显示"AI + 本地规则（1/3）"
+- `/api/status` 的 `skills` 改为真实探测本机技能目录，新增 `skillsReady` / `skillsReason`
+- 长报告批改不再误用 `chemclaw-analyze`：落盘提示词按调用方传入技能名
+
+**资源与运维**
+- `gzip` 改异步（molstar.js 压缩 105ms 不再阻塞事件循环）
+- 数组请求体返回 400（原来会返回一个"什么都没提交"的 200 空分析）
+- 新增 SIGINT/SIGTERM 优雅退出、`EADDRINUSE` 友好提示、unhandledRejection 日志
+- 优化轨迹的 warnings 从数组属性移到 `optimizationProfile.warnings`（前者会被 JSON 丢弃）
+- `.env` 支持 UTF-8 BOM（记事本保存的文件不再静默失效）
 
 ### v2.2（2026-10-17）
 

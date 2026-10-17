@@ -124,6 +124,48 @@ export async function isOpenClawAvailable() {
   return (await probeOpenClaw()).available;
 }
 
+/**
+ * 列出本机实际安装的 chemclaw 技能。
+ *
+ * 之前 /api/status 只要 `openclaw --version` 能跑，就无条件宣称
+ * "chemclaw-analyze / chemclaw-grade 已就绪" —— 哪怕技能目录是空的。
+ * 演示现场追问"技能在哪"时，这句谎话很难圆。
+ *
+ * 同步、只读、不抛异常：读不到就当没装。
+ *
+ * @returns {Promise<string[]>}
+ */
+export async function listInstalledSkills() {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const searchDirs = [
+    path.join(os.homedir(), ".openclaw", "workspace", "skills"),
+    path.join(os.homedir(), ".openclaw", "skills"),
+  ];
+
+  const found = new Set();
+  for (const dir of searchDirs) {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue; // 目录不存在 = 没装，不是错误
+    }
+    for (const entry of entries) {
+      const name = entry.name;
+      if (!name.startsWith("chemclaw-") || name.startsWith(".")) continue;
+      // 目录形态（<name>/SKILL.md）与单文件形态（<name>.md）都认
+      if (entry.isDirectory()) {
+        const skillFile = path.join(dir, name, "SKILL.md");
+        if (await fs.access(skillFile).then(() => true, () => false)) found.add(name);
+      } else if (entry.isFile() && name.endsWith(".md")) {
+        found.add(name.replace(/\.md$/, ""));
+      }
+    }
+  }
+  return [...found].sort();
+}
+
 function truncate(text, max) {
   const value = String(text || "").replace(/\s+/g, " ").trim();
   return value.length > max ? `${value.slice(0, max)}…` : value;
@@ -136,9 +178,11 @@ function truncate(text, max) {
  * @param {string} options.message  — The user message / prompt
  * @param {string} options.sessionId — Session ID for conversation continuity
  * @param {number} [options.timeout] — Timeout in ms
+ * @param {string} [options.skill]  — 大文本落盘时该点名哪个技能（默认 chemclaw-analyze）
+ * @param {string} [options.fileLabel] — 落盘文件名（dataset.txt / report.txt）
  * @returns {Promise<{text: string, durationMs: number, model: string, provider: string, skillUsed: string|null, raw: object}>}
  */
-export async function callOpenClawAgent({ message, sessionId, timeout }) {
+export async function callOpenClawAgent({ message, sessionId, timeout, skill = "chemclaw-analyze", fileLabel = "dataset.txt" }) {
   if (!message || message.trim().length === 0) {
     throw new Error("Empty message");
   }
@@ -147,6 +191,9 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
   // 而是写进一个私有临时目录，用路径告诉 agent 读哪个文件。
   // 目录在 finally 里删掉 —— 旧实现把文件永久留在 ~/.openclaw/workspace/，
   // 每分析一次就多一个几百 KB 的文件。
+  //
+  // 技能名必须由调用方传入：原实现写死 chemclaw-analyze，导致超过 4000 字的
+  // 学生实验报告走 /api/grade 时，实际请求的是"分析"技能。
   let workspaceDir = null;
   let safeMessage = message;
 
@@ -155,10 +202,10 @@ export async function callOpenClawAgent({ message, sessionId, timeout }) {
       const fs = await import("node:fs/promises");
       const os = await import("node:os");
       workspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "chemclaw-"));
-      const inputFile = path.join(workspaceDir, "dataset.txt");
+      const inputFile = path.join(workspaceDir, fileLabel);
       const content = smartTruncate(message, MAX_INPUT_CHARS).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
       await fs.writeFile(inputFile, content, "utf-8");
-      safeMessage = `请使用 chemclaw-analyze 技能分析文件: ${inputFile}`;
+      safeMessage = `请使用 ${skill} 技能分析文件: ${inputFile}`;
     }
 
     const args = [
