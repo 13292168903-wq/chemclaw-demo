@@ -186,7 +186,7 @@ npm test        # node:test，无外部依赖
 - **AI**：OpenClaw 框架（Qwen3_6）→ 降级 DeepSeek / OpenAI API → 降级本地规则
 - **3D 渲染**：Mol*（按需加载）+ 2D 投影兜底（无 WebGL 时）
 - **图表**：手写 SVG（能量曲线 / 优化轨迹 / 红外光谱）
-- **测试**：`node:test`（78 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 14 组技能评估场景）
+- **测试**：`node:test`（78 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 15 项技能评估断言（12 份夹具））
 
 ## 开发报告
 

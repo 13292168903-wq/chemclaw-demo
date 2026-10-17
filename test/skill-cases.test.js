@@ -187,7 +187,7 @@ test("用例9: 能垒写成 kJ/mol 时换算后再核对", async () => {
   assert.equal(analysis.unitsSource.barrier, "kJ/mol→kcal/mol");
 });
 
-test("用例9: 同一输入两次运行结果完全一致（可复现）", async () => {
+test("用例10: 同一输入两次运行结果完全一致（可复现）", async () => {
   const first = await runJson(analyzeScript, [fixture("no-orbitals.log")]);
   const second = await runJson(analyzeScript, [fixture("no-orbitals.log")]);
   assert.deepEqual(first, second);
@@ -197,7 +197,7 @@ test("用例9: 同一输入两次运行结果完全一致（可复现）", async
   assert.deepEqual(reportA, reportB);
 });
 
-test("用例10: --metrics 指向非 JSON 文件 → ok:false", async () => {
+test("用例11: --metrics 指向非 JSON 文件 → ok:false", async () => {
   const output = await runFailure(gradeScript, [fixture("report-clean.txt"), "--metrics", fixture("no-orbitals.log")]);
   assert.equal(output.ok, false);
   assert.match(output.error, /metrics/);
