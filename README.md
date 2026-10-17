@@ -161,7 +161,11 @@ node skills/chemclaw-grade/scripts/grade.mjs <报告.txt> --metrics <analyze 输
 
 ```bash
 npm test        # node:test，无外部依赖
+npm run report  # 跑全部用例并生成 docs/测试报告.png（需要本机有 Chrome / Edge）
 ```
+
+`npm run report` 会真实执行测试与技能脚本，把「修复前 → 修复后」的数值对照和 78 项用例
+一起渲染成一页图，用于答辩或周报；页面高度由脚本自测，不靠手调。
 
 ## API 接口
 

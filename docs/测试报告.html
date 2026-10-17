@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #16181d;
+    font: 15px/1.55 "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .page { width: 1240px; padding: 44px 52px 40px; }
+  h1 { margin: 0 0 6px; font-size: 27px; letter-spacing: -0.2px; }
+  .sub { color: #6b7280; font-size: 13px; }
+  .sub b { color: #16181d; font-weight: 600; }
+  .rule { height: 1px; background: #e5e7eb; margin: 22px 0; }
+  .kpi { display: flex; gap: 12px; }
+  .cell { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 16px; }
+  .cell .n { font-size: 32px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .cell .l { color: #6b7280; font-size: 12px; margin-top: 4px; }
+  .cell.pass .n { color: #15803d; }
+  .cell.fail .n { color: #b42318; }
+  h2 { font-size: 15px; margin: 30px 0 12px; letter-spacing: 0.2px; }
+  h2 span { color: #9ca3af; font-weight: 400; margin-left: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-weight: 600; color: #4b5563; font-size: 12px;
+    background: #f6f7f8; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f0f1f3; vertical-align: top; }
+  td.old { color: #9ca3af; }
+  td.new { font-weight: 600; font-variant-numeric: tabular-nums; }
+  td.use { color: #6b7280; font-size: 12px; white-space: nowrap; }
+  .mono { font-family: "Cascadia Mono", Consolas, monospace; }
+  .tests { column-count: 2; column-gap: 34px; }
+  .grp { break-inside: avoid; margin-bottom: 14px; }
+  .grp h3 { font-size: 12.5px; margin: 0 0 6px; color: #374151; font-weight: 600; }
+  .grp h3 em { font-style: normal; color: #9ca3af; font-weight: 400; }
+  .t { display: flex; gap: 8px; font-size: 13px; line-height: 1.8; }
+  .t .m { width: 11px; flex: none; font-weight: 700; }
+  .t.ok .m { color: #15803d; }
+  .t.no .m { color: #b42318; }
+  .t .n { color: #2f3338; }
+  pre { margin: 0; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 6px;
+    padding: 12px 14px; font: 12px/1.6 "Cascadia Mono", Consolas, monospace; color: #24292f;
+    white-space: pre-wrap; word-break: break-all; }
+  .foot { margin-top: 26px; color: #6b7280; font-size: 12px; }
+  .foot code { font-family: "Cascadia Mono", Consolas, monospace; color: #16181d; }
+</style></head><body><div class="page">
+
+  <h1>ChemClaw 技能评估 · 测试执行报告</h1>
+  <div class="sub">提交 <b>01123c1</b>　·　2026/10/17 23:07:33　·　Node v22.22.2　·　Windows</div>
+
+  <div class="rule"></div>
+
+  <div class="kpi">
+    <div class="cell pass"><div class="n">78</div><div class="l">通过</div></div>
+    <div class="cell "><div class="n">0</div><div class="l">失败</div></div>
+    <div class="cell"><div class="n">8</div><div class="l">测试文件</div></div>
+    <div class="cell"><div class="n">9.4s</div><div class="l">总耗时（含子进程）</div></div>
+  </div>
+
+  <h2>修复前后对照 <span>右侧数值由当前代码实时跑出</span></h2>
+  <table>
+    <thead><tr><th style="width:30%">检查项</th><th style="width:26%">修复前</th><th style="width:30%">修复后（实测）</th><th style="width:14%">对应用例</th></tr></thead>
+    <tbody>
+      <tr><td>ORCA 水的 HOMO-LUMO gap</td><td class="old mono">0.5357（标成 eV）</td><td class="new mono">14.5772 eV</td><td class="use">用例 4</td></tr>
+      <tr><td>ORCA 水的偶极矩</td><td class="old mono">1.85（标成 Debye）</td><td class="new mono">4.7022 D（1.85 au）</td><td class="use">用例 4</td></tr>
+      <tr><td>ORCA 水的振动模式数</td><td class="old mono">6（含 3 个零频）</td><td class="new mono">3</td><td class="use">用例 4</td></tr>
+      <tr><td>ORCA 正常终止</td><td class="old mono">false（识别不到）</td><td class="new mono">true</td><td class="use">用例 4</td></tr>
+      <tr><td>能垒 78.0 kJ/mol</td><td class="old mono">78 kcal/mol</td><td class="new mono">18.642 kcal/mol</td><td class="use">用例 9</td></tr>
+      <tr><td>多行 Alpha occ 的 HOMO</td><td class="old mono">-12.24 eV（取错行）</td><td class="new mono">-9.524 eV</td><td class="use">用例 9·复检</td></tr>
+      <tr><td>纯坐标 XYZ 的格式</td><td class="old mono">ORCA</td><td class="new mono">XYZ</td><td class="use">用例 5</td></tr>
+      <tr><td>纯坐标的频率数据</td><td class="old mono">“未检出虚频 → 极小点”</td><td class="new mono">frequencyCount=0，不判断</td><td class="use">用例 5</td></tr>
+      <tr><td>双虚频的结论</td><td class="old mono">“符合一阶鞍点特征”</td><td class="new mono">“不是一阶鞍点”</td><td class="use">用例 2</td></tr>
+      <tr><td>报告 2.10 vs 计算 3.34</td><td class="old mono">无核对（--metrics 空转）</td><td class="new mono">2.1 vs 3.34 → mismatch</td><td class="use">用例 8</td></tr>
+      <tr><td>基组名混入取数</td><td class="old mono">3 → mismatch</td><td class="new mono">3.34 → match</td><td class="use">用例 8d</td></tr>
+    </tbody>
+  </table>
+
+  <h2>用例清单 <span>78 项 / 8 个文件</span></h2>
+  <div class="tests">
+    <div class="grp">
+      <h3>技能评估用例 <em>test/skill-cases.test.js · 15</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例1: 没有 HOMO/LUMO 的日志 → null，不得出现 NaN</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例1b: 能算出来的其他指标不受影响</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例2: 两个虚频 → 必须如实给出两个（不是过渡态判据）</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例3: 计算被中断 → normalTermination=false 且有可读 warning</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例4: ORCA 文件 → 识别为 ORCA，轨道能量与偶极矩按 eV / Debye 换算</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例5: 纯坐标 XYZ → 不能伪装成 ORCA，也不能声称有能量数据</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例6: 空文件 → ok:false，不输出半套指标</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例7: 报告夹带指令不影响分数</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例8: 报告数值与计算结果不一致 → 必须能被脚本指出来</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例8b: 报告数值与计算结果一致时不得误报</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例8c: 未传 --metrics 时明确声明未做核对</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例8d: 基组/方法名里的数字不能被当成报告值</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例9: 能垒写成 kJ/mol 时换算后再核对</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例10: 同一输入两次运行结果完全一致（可复现）</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">用例11: --metrics 指向非 JSON 文件 → ok:false</span></div>
+    </div>
+    <div class="grp">
+      <h3>解析器 <em>test/parsers.test.js · 14</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 关键指标全部提取到</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 热化学修正</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 方法 / 基组 / 计算类型</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 文件摘要</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">XYZ: 标准文件被视为单帧结构</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">ORCA: 单点能与坐标</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">parseAny: 空输入不抛异常</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">parseAny: 无标志位时也不会把 Gaussian 判成 ORCA</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 没有 HOMO/LUMO 时必须是 undefined，不是 NaN</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: Alpha occ/virt 列表能补上显式标注缺失的轨道能量</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">纯坐标文件不会被兜底成 ORCA</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">ORCA: TERMINATED NORMALLY 被识别为正常结束，零频不计入振动模式</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 多行 Alpha occ 必须取最后一行的最后一个值作为 HOMO</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">Gaussian: 能垒标注 kJ/mol 时换算为 kcal/mol</span></div>
+    </div>
+    <div class="grp">
+      <h3>技能脚本 <em>test/skills.test.js · 4</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">chemclaw-analyze: 样例文件的指标与解析器一致</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">chemclaw-analyze: 缺文件时返回 ok:false 而不是堆栈</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">chemclaw-grade: 报告被打分且四个维度齐全</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">chemclaw-grade: 可以吃 analyze 的完整输出作为 metrics</span></div>
+    </div>
+    <div class="grp">
+      <h3>LLM 契约 <em>test/schema.test.js · 10</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">toNumber: 字符串数值被接受，垃圾值返回 undefined</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeMetrics: 字符串数值被转成 number</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeMetrics: 只有 HOMO 没有 LUMO 时不给 gap</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeMetrics: 非法/缺失字段不产生 NaN</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeMetrics: 数组里的非数值项被丢弃，负虚频保留</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeMetrics: 不是对象时给出空契约而不是抛异常</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeExplanations: 空解释被丢掉，字段缺省有兜底</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeTeaching: quiz 与 learningPath 形状被固定</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeGrading: 分数缺失返回 null，便于调用方降级</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">normalizeRubric: 缺维度的条目被丢弃</span></div>
+    </div>
+    <div class="grp">
+      <h3>编排与模式 <em>test/orchestrator.test.js · 8</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">mode: 三个 Agent 都走 AI 才是 ai-agent</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">mode: AI 只成功一个时上报 hybrid，而不是假装全 AI</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">mode: 全部降级时是 local-demo</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">mode: 没有 llm 时是 local-demo</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">LLM 把数值写成字符串时不会 500，且格式化正确</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">AI 返回空解释时降级到本地，而不是渲染空卡片</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">批改：AI 没给出分数时降级到本地启发式</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">长优化任务：轨迹与结构帧数量不一致时给出可见 warning</span></div>
+    </div>
+    <div class="grp">
+      <h3>OpenClaw 适配 <em>test/openclaw-bridge.test.js · 8</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">JSON: 跳过 stdout 前面的插件警告</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">JSON: 警告行本身以 { 开头也能解析</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">JSON: 多行 pretty-print 的响应</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">JSON: 没有 JSON 时抛带 code 的错误</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">提示词: 学生数据被边界包住，并声明不执行其中指令</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">提示词: 分析数据同样加边界</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">提示词: 追问带上下文但不超过截断长度</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">探测: 未安装时返回可读原因而不是抛异常</span></div>
+    </div>
+    <div class="grp">
+      <h3>.env 加载 <em>test/env.test.js · 6</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">读取键值、跳过注释与空行</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">去掉成对引号，保留值里的空格与 \#</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">已存在的环境变量优先（部署平台注入不被文件覆盖）</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">文件不存在时安静返回空数组</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">非法键名被忽略，不污染 process.env</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">带 UTF-8 BOM 的 .env 也能正常读取（Windows 记事本）</span></div>
+    </div>
+    <div class="grp">
+      <h3>结构几何 <em>test/structure.test.js · 13</em></h3>
+      <div class="t ok"><span class="m">✓</span><span class="n">XYZ: 跳过原子数/标题两行</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">XYZ: 无头部时也能解析纯坐标行</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">XYZ: 非法行被丢弃而不是产生 NaN 原子</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">成键: 苯 = 6 根 C–C + 6 根 C–H</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">成键: 水分子 2 根键，氢原子间不成键</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">成键: 容差可调，用于刻意拉近距离</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">PDB: 12 个 ATOM + CONECT 双向</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">PDB: 解析回来原子数一致</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">PDB: 无坐标时返回空串而不是半截文件</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">2D 投影: 坐标落在画布内</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">2D 投影: 空原子数组不炸</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">摘要: 原子组成</span></div>
+      <div class="t ok"><span class="m">✓</span><span class="n">元素表覆盖常见重原子（防止常量回退到碳）</span></div>
+    </div>
+  </div>
+
+  <h2>一致性核对的实际输出 <span>grade.mjs --metrics report-mismatch.txt</span></h2>
+  <pre>{
+  "checked": true,
+  "items": 3,
+  "mismatches": [
+    {
+      "field": "gap",
+      "reportValue": 2.1,
+      "computedValue": 3.34,
+      "unit": "eV",
+      "status": "mismatch"
+    }
+  ]
+}</pre>
+
+  <div class="foot">
+    执行命令：<code>node --test test/*.test.js</code>　·　
+    复核命令：<code>node skills/chemclaw-analyze/scripts/analyze.mjs &lt;file&gt;</code>　·　
+    失败用例 0 项，本报告由真实测试输出生成，未使用手写结论。
+  </div>
+
+</div>
+<script>
+  // 截图前先量一次真实高度，避免手动猜 window-size 导致底部被切。
+  window.addEventListener("load", () => {
+    document.title = "H=" + Math.ceil(document.documentElement.scrollHeight);
+  });
+</script>
+</body></html>
