@@ -22,14 +22,18 @@ const DEFAULT_ROADMAP = [
   "接入 OpenClaw 插件工具链，可视化多智能体编排过程",
 ];
 
-// Mol* may finish initialising after the first paint.
+// 3D 渲染器是按需加载的：它可能在首屏之后才就绪，就绪时把当前结构补画上去，
+// 而不是让用户停在 2D 投影里。
 document.addEventListener("viewer:ready", () => {
-  const engine = $("#viewerEngine");
-  if (engine) engine.textContent = "3D 交互";
-  const hint = $("#viewerHint");
-  if (hint) hint.textContent = "拖拽旋转 · 滚轮缩放";
-  $("#viewerInfoBar")?.setAttribute("title", "可拖拽旋转、滚轮缩放");
+  syncViewerLabels();
+  const index = Number($("#structureSelect")?.value || 0);
+  const visible = !$("#resultView")?.classList.contains("hidden");
+  if (visible && state.structures?.length && Number.isFinite(index)) {
+    selectStructureFrame(index, { updateMoleculeText: false });
+  }
 });
+
+document.addEventListener("viewer:fallback", () => syncViewerLabels());
 
 // ===== Result page =====
 export function renderAnalysisResult(result) {
@@ -160,18 +164,33 @@ function renderStructures(structures = []) {
   if (badge) badge.classList.toggle("hidden", state.analysisResult?.mode !== "openclaw");
 }
 
+function syncViewerLabels() {
+  const is3d = Boolean(state.viewerInitialized && state.viewer);
+  const status = state.viewerStatus || "idle";
+  const engine = $("#viewerEngine");
+  if (engine) engine.textContent = is3d ? "3D 交互" : status === "loading" ? "3D 加载中" : "2D 投影";
+
+  const hint = $("#viewerHint");
+  if (hint) {
+    hint.textContent = is3d
+      ? "拖拽旋转 · 滚轮缩放"
+      : status === "loading"
+        ? "已显示 2D 投影，3D 就绪后自动切换"
+        : status === "fallback"
+          ? "未启用 WebGL，显示 2D 投影"
+          : "2D 投影";
+  }
+
+  const bar = $("#viewerInfoBar");
+  if (bar) bar.title = is3d ? "可拖拽旋转、滚轮缩放" : "当前显示分子结构的二维投影";
+}
+
 function updateViewerInfoBar(xyzText) {
   const atoms = parseXYZAtoms(xyzText);
   const bonds = atoms.length > 0 ? computeBonds(atoms) : [];
-  const engine = $("#viewerEngine");
-  const is3d = Boolean(state.viewerInitialized && state.viewer);
-  if (engine) engine.textContent = is3d ? "3D 交互" : "2D 投影";
   if ($("#viewerAtomCount")) $("#viewerAtomCount").textContent = `${atoms.length} 个原子`;
   if ($("#viewerBondCount")) $("#viewerBondCount").textContent = `${bonds.length} 根键`;
-  const hint = $("#viewerHint");
-  if (hint) hint.textContent = is3d ? "拖拽旋转 · 滚轮缩放" : "未启用 WebGL，显示 2D 投影";
-  const bar = $("#viewerInfoBar");
-  if (bar) bar.title = is3d ? "可拖拽旋转、滚轮缩放" : "当前浏览器未启用 WebGL，显示二维投影";
+  syncViewerLabels();
 }
 
 export function selectStructureFrame(index, { updateMoleculeText = true } = {}) {
@@ -562,12 +581,24 @@ function renderScore(result) {
   bandEl.className = `grade-band ${tone}`.trim();
   bandEl.textContent = band;
 
-  $("#gradeHeadline").textContent = hasScore ? `${band} · 综合得分` : "尚未评分";
+  const heuristic = result.mode !== "ai-agent" && result.mode !== "openclaw";
+
+  $("#gradeHeadline").textContent = hasScore
+    ? `${band} · ${heuristic ? "结构自检得分" : "综合得分"}`
+    : "尚未评分";
   const dims = result.rubric?.length || 0;
   const strengths = (g.strengths || []).length;
   $("#gradeMeta").textContent = hasScore
-    ? `${dims} 个评分维度 · ${strengths} 项优势 · 满分 100`
+    ? `${dims} 个评分维度 · ${strengths} 项优势 · ${gradingModeLabel(result)}`
     : "请提供学生报告后重新批改";
+}
+
+// 本地模式的"分数"来自关键词与结构检查，不是人工评分 —— 界面上必须说清楚，
+// 否则学生会把它当成老师给的成绩。
+function gradingModeLabel(result) {
+  if (result.mode === "openclaw") return "OpenClaw 批改";
+  if (result.mode === "ai-agent") return "AI 批改";
+  return "本地启发式自检（关键词规则，非人工评分）";
 }
 
 function renderGradingContent(result) {

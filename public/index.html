@@ -19,9 +19,9 @@
       }
     })();
   </script>
-  <link rel="stylesheet" href="/vendor/molstar.css">
+  <!-- molstar.css / molstar.js 不再阻塞首屏：viewer.js 在真的需要画 3D 时
+       才注入这两个资源（合计约 4.7 MB），首屏只加载本页自己的样式与脚本。 -->
   <link rel="stylesheet" href="/styles.css">
-  <script src="/vendor/molstar.js" defer></script>
 </head>
 <body data-role="teacher">
 

@@ -56,7 +56,10 @@ function updateStatusDisplay(data) {
   } else {
     label = "演示模式";
     tone = "is-demo";
-    title = "未配置 API Key，使用本地规则引擎";
+    // 把降级原因放进 tooltip：演示现场被问到"为什么不是 OpenClaw"时有据可查。
+    title = data?.openclawReason
+      ? `未启用 OpenClaw：${data.openclawReason}；当前使用本地规则引擎`
+      : "未配置 API Key，使用本地规则引擎";
   }
 
   chip.className = `status-chip ${tone}`;

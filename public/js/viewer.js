@@ -1,27 +1,60 @@
 // ===== Molecular viewer =====
-// Mol* is the primary renderer. It is loaded lazily (see index.html `defer`)
-// and only mounted when the browser can actually create a WebGL context —
-// Mol* otherwise injects its own English "WebGL does not seem to be
-// available" panel into the page, which is not something a student should see.
+// Mol* is the primary renderer. It is *not* part of the initial payload: the
+// 4.6 MB bundle is injected the first time a structure actually needs to be
+// drawn (see `ensureMolstarAssets`), so a visitor who never opens the 3D card
+// never downloads it. Mol* also injects its own English "WebGL does not seem
+// to be available" panel when context creation fails, which is not something a
+// student should see — every path here degrades to the 2D projection instead.
 
 import { state, $ } from "./state.js";
+import {
+  parseXYZAtoms, parsePdbAtoms, computeBonds, toPDB, projectAtoms2D,
+} from "/shared/structure.js";
+
+const MOLSTAR_JS = "/vendor/molstar.js";
+const MOLSTAR_CSS = "/vendor/molstar.css";
 
 let molstarViewer = null;
 let molstarInitPromise = null;
 let viewerLoadToken = 0;
 let lastFallbackText = "";
+let molstarAssetsPromise = null;
 
-const ELEMENT_COLORS = {
-  H: "#f1f5f9", C: "#334155", N: "#2563eb", O: "#dc2626",
-  F: "#16a34a", P: "#d97706", S: "#eab308", Cl: "#15803d",
-  Br: "#92400e", I: "#7c3aed", Si: "#64748b", B: "#f59e0b",
-};
+// ===== Lazy asset loading =====
+function injectStylesheet(href) {
+  if (document.querySelector(`link[data-molstar="${href}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  link.dataset.molstar = href;
+  document.head.appendChild(link);
+}
 
-const COVALENT_RADII = {
-  H: 0.31, C: 0.76, N: 0.71, O: 0.66, F: 0.57,
-  S: 1.05, P: 1.07, Cl: 1.02, Br: 1.20, I: 1.39,
-  Si: 1.11, B: 0.84,
-};
+/**
+ * Load Mol* on demand. Resolves true when `window.molstar.Viewer` exists.
+ * Failure is not an error: the caller falls back to the 2D projection.
+ */
+export function ensureMolstarAssets() {
+  if (window.molstar?.Viewer) return Promise.resolve(true);
+  if (molstarAssetsPromise) return molstarAssetsPromise;
+
+  molstarAssetsPromise = new Promise((resolve) => {
+    injectStylesheet(MOLSTAR_CSS);
+    const script = document.createElement("script");
+    script.src = MOLSTAR_JS;
+    script.async = true;
+    script.dataset.molstar = MOLSTAR_JS;
+    script.onload = () => resolve(Boolean(window.molstar?.Viewer));
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+  }).then((ok) => {
+    // Allow a later retry (network hiccup) without a page reload.
+    if (!ok) molstarAssetsPromise = null;
+    return ok;
+  });
+
+  return molstarAssetsPromise;
+}
 
 // ===== Capability check =====
 export function supportsWebGL() {
@@ -69,23 +102,43 @@ export function initMoleculeViewer() {
   if (!container) return Promise.resolve(null);
 
   if (!supportsWebGL()) {
-    // Do not even instantiate Mol*: it would render its own error UI.
+    // Do not fetch 4.6 MB of Mol* for a machine that cannot run it.
     state.viewerInitialized = false;
     molstarViewer = null;
-    return Promise.resolve(null);
-  }
-
-  if (typeof molstar === "undefined" || !molstar.Viewer) {
-    // Script still loading; the caller falls back to 2D for now.
-    state.viewerInitialized = false;
+    state.viewerStatus = "fallback";
     return Promise.resolve(null);
   }
 
   if (molstarInitPromise) return molstarInitPromise;
 
-  const dark = document.documentElement.classList.contains("dark");
+  state.viewerStatus = "loading";
+  molstarInitPromise = (async () => {
+    if (!window.molstar?.Viewer) {
+      const ready = await ensureMolstarAssets();
+      if (!ready) throw new Error("Mol* 资源加载失败");
+    }
+    return createMolstarViewer(container);
+  })().catch((error) => {
+    console.warn("Mol* unavailable, using 2D projection:", error?.message || error);
+    molstarInitPromise = null;
+    molstarViewer = null;
+    state.viewer = null;
+    state.viewerInitialized = false;
+    state.viewerStatus = "fallback";
+    installFallbackGuard(container);
+    if (container.querySelectorAll("canvas").length || container.querySelector(".msp-error")) {
+      container.innerHTML = "";
+    }
+    document.dispatchEvent(new CustomEvent("viewer:fallback"));
+    return null;
+  });
 
-  molstarInitPromise = molstar.Viewer.create("moleculeViewer", {
+  return molstarInitPromise;
+}
+
+function createMolstarViewer(container) {
+  const dark = document.documentElement.classList.contains("dark");
+  return window.molstar.Viewer.create("moleculeViewer", {
     layoutIsExpanded: false,
     layoutShowControls: false,
     layoutShowRemoteState: false,
@@ -109,6 +162,7 @@ export function initMoleculeViewer() {
     molstarViewer = viewer;
     state.viewer = viewer;
     state.viewerInitialized = true;
+    state.viewerStatus = "ready";
     applyViewerTheme(dark);
 
     // Keep the canvas in sync when the workbench changes width (drawer, tabs).
@@ -122,20 +176,7 @@ export function initMoleculeViewer() {
 
     document.dispatchEvent(new CustomEvent("viewer:ready"));
     return viewer;
-  }).catch((error) => {
-    console.warn("Mol* unavailable, using 2D projection:", error?.message || error);
-    molstarInitPromise = null;
-    molstarViewer = null;
-    state.viewer = null;
-    state.viewerInitialized = false;
-    installFallbackGuard(container);
-    if (container.querySelectorAll("canvas").length || container.querySelector(".msp-error")) {
-      container.innerHTML = "";
-    }
-    return null;
   });
-
-  return molstarInitPromise;
 }
 
 function applyViewerTheme(isDark) {
@@ -234,73 +275,10 @@ function detectFormat(text) {
   return "xyz";
 }
 
+// 结构几何（解析 / 成键 / PDB / 2D 投影）来自 /shared/structure.js，
+// 与后端 src/orchestrator.js 是同一份实现。
 export function xyzToPdb(xyzText) {
-  const atoms = parseXYZAtoms(xyzText);
-  if (!atoms.length) return "";
-  const bonds = computeBonds(atoms);
-  let pdb = "";
-  const title = "ChemClaw structure";
-  pdb += `HEADER    ${title}\n`;
-  pdb += `TITLE     ${title}\n`;
-  atoms.forEach((atom, i) => {
-    const serial = String(i + 1).padStart(5);
-    const name = atom.element.padEnd(4);
-    const x = atom.x.toFixed(3).padStart(8);
-    const y = atom.y.toFixed(3).padStart(8);
-    const z = atom.z.toFixed(3).padStart(8);
-    const element = atom.element.padEnd(2);
-    pdb += `ATOM  ${serial} ${name} MOL A   1    ${x}${y}${z}  1.00  0.00          ${element}\n`;
-  });
-  bonds.forEach(([i, j]) => {
-    pdb += `CONECT${String(i + 1).padStart(5)}${String(j + 1).padStart(5)}\n`;
-  });
-  pdb += "END\n";
-  return pdb;
-}
-
-// ===== XYZ parsing / bonds =====
-function parseXYZAtoms(xyzText = "") {
-  const lines = xyzText.trim().split(/\r?\n/);
-  const start = /^\d+$/.test(lines[0]?.trim()) ? 2 : 0;
-  return lines.slice(start).map((line) => {
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 4 || !/^[A-Z][a-z]?$/.test(parts[0])) return null;
-    const atom = { element: parts[0], x: Number(parts[1]), y: Number(parts[2]), z: Number(parts[3]) };
-    return Number.isFinite(atom.x) && Number.isFinite(atom.y) && Number.isFinite(atom.z) ? atom : null;
-  }).filter(Boolean);
-}
-
-// Fallback for when only PDB data is available (Mol* receives PDB).
-function parsePdbAtoms(pdbText = "") {
-  return pdbText.split(/\r?\n/)
-    .filter((line) => /^(ATOM|HETATM)/.test(line))
-    .map((line) => {
-      const x = Number(line.slice(30, 38));
-      const y = Number(line.slice(38, 46));
-      const z = Number(line.slice(46, 54));
-      let element = line.slice(76, 78).trim();
-      if (!element) {
-        const name = line.slice(12, 16).trim();
-        element = (name.match(/^[A-Za-z]/)?.[0] || "C").toUpperCase();
-      }
-      return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) ? { element, x, y, z } : null;
-    })
-    .filter(Boolean);
-}
-
-function computeBonds(atoms) {
-  const bonds = [];
-  const tolerance = 1.28;
-  for (let i = 0; i < atoms.length; i++) {
-    for (let j = i + 1; j < atoms.length; j++) {
-      const a = atoms[i], b = atoms[j];
-      const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-      const r1 = COVALENT_RADII[a.element] || 0.76;
-      const r2 = COVALENT_RADII[b.element] || 0.76;
-      if (dist > 0.25 && dist < (r1 + r2) * tolerance) bonds.push([i, j]);
-    }
-  }
-  return bonds;
+  return toPDB(xyzText, "ChemClaw structure");
 }
 
 // ===== 2D fallback =====
@@ -347,43 +325,6 @@ function renderMoleculeFallback(xyzText) {
       }).join("")}
     </svg>`;
   container.querySelector("svg").style.height = "100%";
-}
-
-function projectAtoms2D(atoms) {
-  const width = 520, height = 360;
-  const cx = atoms.reduce((s, a) => s + a.x, 0) / atoms.length;
-  const cy = atoms.reduce((s, a) => s + a.y, 0) / atoms.length;
-  const cz = atoms.reduce((s, a) => s + a.z, 0) / atoms.length;
-  const cosY = Math.cos(0.75), sinY = Math.sin(0.75);
-  const cosX = Math.cos(-0.55), sinX = Math.sin(-0.55);
-
-  const raw = atoms.map((atom) => {
-    const x0 = atom.x - cx, y0 = atom.y - cy, z0 = atom.z - cz;
-    const x1 = x0 * cosY + z0 * sinY;
-    const z1 = -x0 * sinY + z0 * cosY;
-    const y1 = y0 * cosX - z1 * sinX;
-    return { ...atom, px: x1, py: y1 };
-  });
-
-  const span = Math.max(
-    Math.max(...raw.map((a) => a.px)) - Math.min(...raw.map((a) => a.px)),
-    Math.max(...raw.map((a) => a.py)) - Math.min(...raw.map((a) => a.py)),
-    1,
-  );
-  const scale = Math.min(width, height) * 0.62 / span;
-  const radii = { H: 9, C: 15, N: 14, O: 14, F: 13, S: 16, P: 16, Cl: 16 };
-
-  return {
-    width,
-    height,
-    projected: raw.map((atom) => ({
-      ...atom,
-      x: Number((width / 2 + atom.px * scale).toFixed(1)),
-      y: Number((height / 2 - atom.py * scale).toFixed(1)),
-      color: ELEMENT_COLORS[atom.element] || "#7c8794",
-      r: radii[atom.element] || 12,
-    })),
-  };
 }
 
 // ===== Text helpers =====

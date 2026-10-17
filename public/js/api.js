@@ -1,5 +1,9 @@
 // ===== API client =====
-const DEFAULT_TIMEOUT = 60_000;
+// 超时必须比服务端更长。服务端在 OpenClaw 模式下允许 180s（见 src/analyzer.js），
+// 以前这里是 60s —— 真接了模型就变成"前端先超时、后端还在跑"，用户看到假失败。
+const DEFAULT_TIMEOUT = 200_000;
+const ANALYSIS_TIMEOUT = 200_000;
+const CHAT_TIMEOUT = 150_000;
 
 async function request(url, { method = "GET", body, timeout = DEFAULT_TIMEOUT } = {}) {
   const controller = new AbortController();
@@ -39,13 +43,21 @@ export async function fetchStatus() {
 }
 
 export function analyze({ datasetName, datasetText, moleculeText }) {
-  return request("/api/analyze", { method: "POST", body: { datasetName, datasetText, moleculeText } });
+  return request("/api/analyze", {
+    method: "POST",
+    body: { datasetName, datasetText, moleculeText },
+    timeout: ANALYSIS_TIMEOUT,
+  });
 }
 
 export function grade({ studentReport, analysisContext }) {
-  return request("/api/grade", { method: "POST", body: { studentReport, analysisContext } });
+  return request("/api/grade", {
+    method: "POST",
+    body: { studentReport, analysisContext },
+    timeout: ANALYSIS_TIMEOUT,
+  });
 }
 
 export function chat({ question, context }) {
-  return request("/api/chat", { method: "POST", body: { question, context }, timeout: 90_000 });
+  return request("/api/chat", { method: "POST", body: { question, context }, timeout: CHAT_TIMEOUT });
 }

@@ -145,7 +145,10 @@ export function parseGaussian(text) {
   }
 
   // 能垒
-  const barrierMatch = text.match(/(?:Activation\s*barrier|Barrier)\s*[:=]\s*(-?\d+(?:\.\d+)?)/i);
+  // 真实文件里常写成 "Activation barrier (ZPE-corrected): 18.6 kcal/mol"，
+  // 旧正则要求 Barrier 后紧跟 : 或 =，于是仓库自带的样例文件里这个字段
+  // 一直没被解析出来（界面只是碰巧没显示，没有报错）。
+  const barrierMatch = text.match(/(?:Activation\s*barrier|Barrier)[^:\n]{0,40}?[:=]\s*(-?\d+(?:\.\d+)?)/i);
   if (barrierMatch) result.barrier = parseFloat(barrierMatch[1]);
 
   // 吸附能

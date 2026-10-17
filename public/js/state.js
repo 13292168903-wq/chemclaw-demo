@@ -6,6 +6,8 @@ export const state = {
   role: "teacher",
   viewer: null,
   viewerInitialized: false,
+  // idle | loading | ready | fallback — 3D 渲染器是按需加载的，信息条要能说清当前状态
+  viewerStatus: "idle",
   structures: [],
   optimizationTrajectory: [],
   selectedOptimizationIndex: 0,
