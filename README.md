@@ -186,7 +186,7 @@ npm test        # node:test，无外部依赖
 - **AI**：OpenClaw 框架（Qwen3_6）→ 降级 DeepSeek / OpenAI API → 降级本地规则
 - **3D 渲染**：Mol*（按需加载）+ 2D 投影兜底（无 WebGL 时）
 - **图表**：手写 SVG（能量曲线 / 优化轨迹 / 红外光谱）
-- **测试**：`node:test`（72 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 11 组技能评估场景）
+- **测试**：`node:test`（78 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 14 组技能评估场景）
 
 ## 开发报告
 
@@ -198,16 +198,21 @@ npm test        # node:test，无外部依赖
 **单位与判据**
 - ORCA `E(HOMO)/E(LUMO)` 与 Gaussian `Alpha occ/virt` 的单位是 Hartree，之前被直接标成 eV：
   水的 gap 0.5357 Ha 会被讲成"0.54 eV、小 gap、前线轨道作用强"。现在统一换算为 eV（≈14.58 eV）
+- 多行 `Alpha occ` 只取第一行会让 HOMO 变成 -19 Ha 量级、gap 报到 200+ eV；
+  改为取最后一个 occ 块的最后一个值
 - ORCA `Total Dipole Moment` 是 atomic unit，换算为 Debye（1.85 au ≈ 4.70 D）
 - ORCA 的 `****ORCA TERMINATED NORMALLY****` 未被识别，正常结束的任务被报成 `normalTermination: false`
 - ORCA 输出里的 0.00 cm⁻¹ 是平动/转动，不再计入 `frequencyCount`（水从"6 个模式"回到 3 个）
 - 双虚频文件不再被判成过渡态：模板文案改为"检出 N 个虚频，不是一阶鞍点"
 - 纯坐标 XYZ 不再被 `parseAny` 兜底标成 ORCA；`frequencyCount: 0` 不再被读作"未检出虚频"
 - 新增 `aborted` / `errors`：`Error termination`、`Job killed` 之类的中止信号单独上报
+- 新增 `unitsSource`：标明每个字段的单位是脚本换算的还是照文件原样透传（`as-written` 即未校验）；
+  能垒读取单位串，`78.0 kJ/mol` 会换算成 `18.642 kcal/mol`
 
 **批改**
 - `--metrics` 之前只被读进来、对输出毫无影响；现在会做 `consistency` 核对（gap / 能垒 / 虚频），
   给出 `match / mismatch / unit-mismatch / uncheckable` 与容差说明
+- 核对只认带单位的数字，且会跳过 `B3LYP`、`def2-SVP` 这类基组名里的数字（曾把 3.34 取成 3）
 - `cm⁻¹` 上标被误判为"未标单位"的问题修复
 
 **技能细则**
