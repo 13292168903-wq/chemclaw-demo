@@ -172,7 +172,7 @@ export class Orchestrator {
     if (metrics.frequencies?.length > 0) parts.push(`包含 ${metrics.frequencies.length} 个频率模式`);
     if (imagCount > 0) parts.push(`检出 ${imagCount} 个虚频信号`);
     if (Number.isFinite(metrics.gap)) parts.push(`HOMO-LUMO gap 已计算`);
-    parts.push(`生成 ${teachResult.quiz?.length || 0} 道训练题`);
+    if ((teachResult.quiz?.length || 0) > 0) parts.push(`生成 ${teachResult.quiz.length} 道训练题`);
     return parts.join("；");
   }
 
@@ -204,8 +204,13 @@ export class Orchestrator {
   }
 
   buildBasicInfo(metrics, datasetName) {
+    const format = metrics.fileDetails?.format;
+    const software = format === "gaussian" ? "Gaussian"
+      : format === "orca" ? "ORCA"
+        : format === "xyz" ? "XYZ（仅坐标）"
+          : "未知";
     return {
-      software: metrics.fileDetails?.format === "gaussian" ? "Gaussian" : metrics.fileDetails?.format === "orca" ? "ORCA" : "未知",
+      software,
       fileName: datasetName,
       taskType: metrics.calculationType || "未知任务",
       method: metrics.method || null,

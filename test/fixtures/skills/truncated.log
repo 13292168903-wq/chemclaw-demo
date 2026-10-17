@@ -1,0 +1,31 @@
+ Entering Gaussian System, Link 0=g16
+
+ #p opt freq b3lyp/6-31g(d)
+
+ Job killed by scheduler (walltime exceeded) — 文件被截断
+
+ 0 1
+ C   0.000000    0.000000    0.000000
+ O   1.430000    0.000000    0.000000
+ H   1.820000    0.960000    0.000000
+
+
+ SCF Done:  E(RB3LYP) =  -115.4800001     A.U. after    6 cycles
+
+ Harmonic frequencies (cm**-1), IR intensities (KM/Mole):
+                      1                      2                      3
+ Frequencies --    301.1122               1002.5561                 88.3123
+ IR Inten    --      0.8122                 11.2231                  3.0112
+
+                       Standard orientation:
+
+ ---------------------------------------------------------------------
+ Center     Atomic      Atomic             Coordinates (Angstroms)
+ Number     Number       Type             X           Y           Z
+ ---------------------------------------------------------------------
+      1          6           0        0.000000    0.000000    0.000000
+      2          8           0        1.430000    0.000000    0.000000
+      3          1           0        1.820000    0.960000    0.000000
+ ---------------------------------------------------------------------
+
+ Error termination via Lnk1e in /opt/g16/l9999.exe

@@ -19,6 +19,30 @@ export class TeachingDesignerAgent {
 
   analyzeLocal(context) {
     const metrics = context.metrics || {};
+
+    // 没有任何可支撑教学的数值时，硬生成"为什么过渡态只需要一个虚频"这类题目
+    // 是无中生有 —— 尤其是学生只上传了一份 XYZ 的时候。
+    const hasSignal = (metrics.frequencies?.length || 0) > 0
+      || (metrics.imaginaryFrequencies?.length || 0) > 0
+      || (metrics.energies?.length || 0) > 0
+      || Number.isFinite(metrics.gap)
+      || Number.isFinite(metrics.barrier)
+      || Number.isFinite(metrics.adsorption)
+      || Number.isFinite(metrics.dipole);
+
+    if (!hasSignal) {
+      return {
+        agent: this.name,
+        via: "local",
+        learningGoals: [],
+        learningPath: [],
+        quiz: [],
+        researchSuggestions: [],
+        literatureBenchmarks: [],
+        note: "当前数据没有可支撑教学的指标，已跳过学习路径与训练题。",
+      };
+    }
+
     const learningGoals = buildLearningGoals(metrics);
     const quiz = this.generateQuiz(metrics);
     const learningPath = [

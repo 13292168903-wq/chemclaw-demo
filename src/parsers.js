@@ -12,6 +12,22 @@ function matchedNumber(match) {
   return Number.isFinite(value) ? value : undefined;
 }
 
+// ===== 单位 =====
+// 轨道能量在不同软件、不同行里的单位不一样：
+//   - Gaussian "Alpha occ./virt. eigenvalues" → Hartree
+//   - ORCA "E(HOMO) =" / "E(LUMO) ="         → Hartree
+//   - 部分整理过的文本直接写 "HOMO = -5.82"  → 惯例上按 eV 理解
+// 界面与教学文案统一用 eV 讲 gap，所以把 Hartree 的来源显式换算，
+// 而不是把 0.54 Hartree 直接标成 "0.54 eV"（差 27 倍，会把水讲成
+// "小 gap、前线轨道作用强"）。
+export const HARTREE_TO_EV = 27.211386245988;
+/** 偶极矩：1 atomic unit = 2.541746 Debye。 */
+export const AU_TO_DEBYE = 2.541746473;
+
+function hartreeToEv(value) {
+  return Number.isFinite(value) ? Number((value * HARTREE_TO_EV).toFixed(4)) : undefined;
+}
+
 export function parseGaussian(text) {
   const result = {
     type: "gaussian",
@@ -103,19 +119,25 @@ export function parseGaussian(text) {
   result.homo = matchedNumber(text.match(/(?:^|\n)\s*HOMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im));
   result.lumo = matchedNumber(text.match(/(?:^|\n)\s*LUMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im));
 
-  // 再尝试 Gaussian Alpha occ/virt 格式
+  // 再尝试 Gaussian Alpha occ/virt 格式（单位 Hartree，需换成 eV）
   if (result.homo === undefined) {
     const alphaOccMatch = text.match(/Alpha\s+occ\. eigenvalues\s+--\s+(.+)/i);
     if (alphaOccMatch) {
       const values = alphaOccMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
-      if (values.length > 0) result.homo = values[values.length - 1];
+      if (values.length > 0) {
+        result.homo = hartreeToEv(values[values.length - 1]);
+        result.orbitalUnit = "Hartree→eV";
+      }
     }
   }
   if (result.lumo === undefined) {
     const alphaVirtMatch = text.match(/Alpha\s+virt\. eigenvalues\s+--\s+(.+)/i);
     if (alphaVirtMatch) {
       const values = alphaVirtMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
-      if (values.length > 0) result.lumo = values[0];
+      if (values.length > 0) {
+        result.lumo = hartreeToEv(values[0]);
+        result.orbitalUnit = "Hartree→eV";
+      }
     }
   }
 
@@ -176,7 +198,17 @@ export function parseGaussian(text) {
 
   // 收敛状态
   result.converged = /Maximum Force.*YES|Item.*Value.*Threshold.*Converged/i.test(text);
-  result.normalTermination = /Normal termination/i.test(text);
+  result.normalTermination = /Normal termination|TERMINATED NORMALLY/i.test(text);
+  // Error termination / 被调度器杀掉，比"没找到 Normal termination"强得多，
+  // 单独记下来，界面上才有依据说"这次计算是失败的"而不是"可能没结束"。
+  // 取全部匹配：一份文件里往往先出现 "Job killed"，后面才是 "Error termination"，
+  // 只抓第一个会丢掉真正的失败原因。
+  const abortMatches = [...text.matchAll(/(?:Error termination[^\n]*|aborting the run[^\n]*|Job killed[^\n]*)/gi)]
+    .map((m) => m[0].trim().slice(0, 200));
+  if (abortMatches.length) {
+    result.aborted = true;
+    result.errors.push(...abortMatches.slice(0, 5));
+  }
   result.structureFrames = extractXYZFrames(text);
   result.optimizationEnergies = extractOptimizationEnergies(text, result.energies);
 
@@ -197,7 +229,11 @@ export function parseORCA(text) {
     imaginaryFrequencies: [],
     irIntensities: [],
     vibrationalModes: [],
-    dipole: null
+    dipole: null,
+    converged: false,
+    normalTermination: false,
+    aborted: false,
+    errors: []
   };
 
   const energyMatch = text.match(/FINAL SINGLE POINT ENERGY\s+(-?[\d.]+)/i);
@@ -207,30 +243,53 @@ export function parseORCA(text) {
     .filter(item => Number.isFinite(item.hartree));
   result.structureFrames = extractXYZFrames(text);
 
+  // E(HOMO) / E(LUMO) 是 Hartree，界面按 eV 讲，这里换算并标注来源。
   const homoMatch = text.match(/HOMO\s*energy\s*[:=]\s*(-?[\d.]+)/i)
     || text.match(/E\(HOMO\)\s*[:=]\s*(-?[\d.]+)/i);
-  if (homoMatch) result.homo = parseFloat(homoMatch[1]);
+  if (homoMatch) {
+    result.homo = hartreeToEv(Number.parseFloat(homoMatch[1]));
+    result.orbitalUnit = "Hartree→eV";
+  }
 
   const lumoMatch = text.match(/LUMO\s*energy\s*[:=]\s*(-?[\d.]+)/i)
     || text.match(/E\(LUMO\)\s*[:=]\s*(-?[\d.]+)/i);
-  if (lumoMatch) result.lumo = parseFloat(lumoMatch[1]);
+  if (lumoMatch) {
+    result.lumo = hartreeToEv(Number.parseFloat(lumoMatch[1]));
+    result.orbitalUnit = "Hartree→eV";
+  }
 
   if (result.homo != null && result.lumo != null) {
     result.gap = parseFloat((result.lumo - result.homo).toFixed(4));
   }
 
+  // ORCA 打印的偶极矩单位是 atomic unit，界面按 Debye 展示，需要换算
+  // （水 1.85 au ≈ 4.70 D，直接标成 1.85 Debye 是错的）。
   const dipoleMatch = text.match(/Total Dipole Moment\s*[:=]\s*(-?[\d.]+)/i);
-  if (dipoleMatch) result.dipole = parseFloat(dipoleMatch[1]);
+  if (dipoleMatch) {
+    const au = Number.parseFloat(dipoleMatch[1]);
+    if (Number.isFinite(au)) {
+      result.dipole = Number((au * AU_TO_DEBYE).toFixed(4));
+      result.dipoleUnit = "au→Debye";
+    }
+  }
 
   const freqMatches = text.matchAll(/^\s*\d+:\s+(-?[\d.]+)\s+cm\*\*-1/gm);
   for (const m of freqMatches) {
     const val = parseFloat(m[1]);
-    if (!isNaN(val)) {
-      result.frequencies.push(val);
-      if (val < 0) result.imaginaryFrequencies.push(val);
-      result.irIntensities.push(0);
-      result.vibrationalModes.push({ index: result.vibrationalModes.length + 1, frequency: val, intensity: 0 });
-    }
+    // 0.00 cm⁻¹ 是平动/转动自由度，不是振动模式。水只有 3N-6=3 个真实振动，
+    // 把 3 个零频算进去会变成"6 个频率模式"，还会在红外谱上多出 0 位置的峰。
+    if (!Number.isFinite(val) || Math.abs(val) < 1e-6) continue;
+    result.frequencies.push(val);
+    if (val < 0) result.imaginaryFrequencies.push(val);
+    result.irIntensities.push(0);
+    result.vibrationalModes.push({ index: result.vibrationalModes.length + 1, frequency: val, intensity: 0 });
+  }
+
+  result.normalTermination = /TERMINATED NORMALLY|ORCA TERMINATED NORMALLY/i.test(text);
+  const abortMatch = text.match(/(?:aborting the run[^\n]*|Error termination[^\n]*)/i);
+  if (abortMatch) {
+    result.aborted = true;
+    result.errors.push(abortMatch[0].trim().slice(0, 200));
   }
   result.optimizationEnergies = extractOptimizationEnergies(text, result.energies);
 
@@ -249,13 +308,38 @@ const KNOWN_CALC_TYPES = [
 ];
 
 export function detectCalcType(text) {
+  // 纯坐标文件没有任何计算输出，套一个"通用计算化学输出"会让人以为算过东西。
+  if (isPlainCoordinates(text)) return "仅结构（未包含计算结果）";
   for (const { pattern, label } of KNOWN_CALC_TYPES) {
     if (pattern.test(text)) return label;
   }
   return "通用计算化学输出";
 }
 
+/**
+ * 是否只是一份坐标文件（标准 XYZ 或裸坐标行），不含任何计算结果。
+ * 导出给技能脚本复用，避免"网页说是 ORCA、技能说是 XYZ"这种前后不一致。
+ */
+export function isPlainCoordinates(text = "") {
+  if (/\b(SCF Done|FINAL SINGLE POINT ENERGY|Normal termination|TERMINATED NORMALLY|Entering Gaussian|Entering Link|ORCA)\b/i.test(text)) {
+    return false;
+  }
+  // 带 route 行的是输入文件，不是"只有坐标"（它至少交代了想算什么）
+  if (/(?:^|\n)\s*#[pPnN]\S*/.test(text)) return false;
+  // 标准 XYZ：首行原子数；或者首行就是坐标行
+  if (/^\s*\d+\s*(\r?\n)/.test(text)) return true;
+  return /^\s*[A-Z][a-z]?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?/m.test(text);
+}
+
 export function parseAny(text) {
+  // 纯坐标文件必须单独处理：下面的兜底是 parseORCA()，
+  // 一份 .xyz 会被标成 "ORCA" —— 学生会以为"这是 ORCA 算的"，
+  // 而文件里一个能量值都没有。
+  if (isPlainCoordinates(text)) {
+    const parsed = parseGaussian(text);
+    parsed.type = "xyz";
+    return parsed;
+  }
   // 自动检测格式
   if (/\bGaussian\s*\d/i.test(text) || /Entering Link/i.test(text) || /SCF Done/i.test(text)) {
     return parseGaussian(text);

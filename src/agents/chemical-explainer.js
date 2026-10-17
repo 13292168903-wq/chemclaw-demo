@@ -29,7 +29,10 @@ export class ChemicalExplainerAgent {
       explanations.push({
         topic: conceptCards.imaginaryFrequency.title,
         level: "核心判据",
-        detail: conceptCards.imaginaryFrequency.evidence(metrics.imaginaryFrequencies[0]),
+        detail: conceptCards.imaginaryFrequency.evidence(
+          metrics.imaginaryFrequencies[0],
+          metrics.imaginaryFrequencies.length,
+        ),
         teachingHint: conceptCards.imaginaryFrequency.teaching
       });
     }

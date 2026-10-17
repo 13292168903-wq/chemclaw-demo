@@ -64,6 +64,7 @@ chemclaw-demo/
 │       └── scripts/grade.mjs      # 复用 src/agents/grading-feedback.js
 ├── scripts/install-skills.mjs     # 把 skills/ 铺到 ~/.openclaw/workspace/skills/
 ├── test/                          # node:test（解析器 / 结构 / 适配层 / env / schema / 编排 / 技能）
+│   └── fixtures/skills/           # 技能评估场景：缺轨道 / 双虚频 / 计算中断 / ORCA / 纯坐标 / 注入 / 数值不一致
 ├── data/samples/                  # 样例数据
 ├── docs/                          # 参赛材料、评审截图、改进计划
 │   ├── competition/
@@ -185,9 +186,34 @@ npm test        # node:test，无外部依赖
 - **AI**：OpenClaw 框架（Qwen3_6）→ 降级 DeepSeek / OpenAI API → 降级本地规则
 - **3D 渲染**：Mol*（按需加载）+ 2D 投影兜底（无 WebGL 时）
 - **图表**：手写 SVG（能量曲线 / 优化轨迹 / 红外光谱）
-- **测试**：`node:test`（58 个用例，覆盖解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本）
+- **测试**：`node:test`（72 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 11 组技能评估场景）
 
 ## 开发报告
+
+### v2.4（2026-10-17）— 技能评估驱动的修订
+
+用 11 组场景用例（`test/fixtures/skills/`）对两个技能做独立评估，暴露出四个"数值正确但结论错误"的问题，
+均已在数据层修掉（不只是改文档措辞）：
+
+**单位与判据**
+- ORCA `E(HOMO)/E(LUMO)` 与 Gaussian `Alpha occ/virt` 的单位是 Hartree，之前被直接标成 eV：
+  水的 gap 0.5357 Ha 会被讲成"0.54 eV、小 gap、前线轨道作用强"。现在统一换算为 eV（≈14.58 eV）
+- ORCA `Total Dipole Moment` 是 atomic unit，换算为 Debye（1.85 au ≈ 4.70 D）
+- ORCA 的 `****ORCA TERMINATED NORMALLY****` 未被识别，正常结束的任务被报成 `normalTermination: false`
+- ORCA 输出里的 0.00 cm⁻¹ 是平动/转动，不再计入 `frequencyCount`（水从"6 个模式"回到 3 个）
+- 双虚频文件不再被判成过渡态：模板文案改为"检出 N 个虚频，不是一阶鞍点"
+- 纯坐标 XYZ 不再被 `parseAny` 兜底标成 ORCA；`frequencyCount: 0` 不再被读作"未检出虚频"
+- 新增 `aborted` / `errors`：`Error termination`、`Job killed` 之类的中止信号单独上报
+
+**批改**
+- `--metrics` 之前只被读进来、对输出毫无影响；现在会做 `consistency` 核对（gap / 能垒 / 虚频），
+  给出 `match / mismatch / unit-mismatch / uncheckable` 与容差说明
+- `cm⁻¹` 上标被误判为"未标单位"的问题修复
+
+**技能细则**
+- 两个 SKILL.md 按评估报告重写：新增"引用前的四道闸"（失败/中止/未正常结束/无频率数据）、
+  "模板文本不是结论"、"`null` 不是 0"、`converged: false` 的正确读法、数值核对容差规则，
+  并修正了文档里跑不通的命令路径
 
 ### v2.3（2026-10-17）
 

@@ -24,7 +24,7 @@ export class GradingFeedbackAgent {
 
     const checks = {
       hasNumbers: /\d+(?:\.\d+)?/.test(studentReport),
-      hasUnits: /kcal|eV|Hartree|kJ|cm-1|Debye|nm|Å/i.test(studentReport),
+      hasUnits: /kcal|eV|Hartree|kJ|cm-1|cm⁻¹|cm\^-1|Debye|nm|Å/i.test(studentReport),
       hasImagFreq: /虚频|imaginary|transition|过渡态/i.test(studentReport),
       hasComparison: /对照|比较|不同|对比|相对/i.test(studentReport),
       hasMechanism: /机理|机制|路径|中间体|反应坐标/i.test(studentReport),

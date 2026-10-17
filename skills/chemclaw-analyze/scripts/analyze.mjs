@@ -76,6 +76,13 @@ function hillFormula(xyzText) {
   return order.map((el) => `${el}${composition[el] > 1 ? composition[el] : ""}`).join("");
 }
 
+/**
+ * 纯坐标文件（标准 XYZ 或裸坐标行）。
+ * 判定逻辑放在 src/parsers.js 里（isPlainCoordinates），网页端用的是同一份，
+ * 避免"技能说 XYZ、接口说 ORCA"。
+ */
+const isCoordinatesOnly = () => isPlainCoordinates(text);
+
 function fail(message) {
   process.stdout.write(`${JSON.stringify({ ok: false, skill: "chemclaw-analyze", error: message }, null, 2)}\n`);
   process.exit(1);
@@ -99,7 +106,7 @@ try {
 }
 if (!text.trim()) fail("输入文件为空");
 
-const { parseAny, buildFileDetails } = await import(pathToFileURL(path.join(root, "src/parsers.js")).href);
+const { parseAny, buildFileDetails, isPlainCoordinates } = await import(pathToFileURL(path.join(root, "src/parsers.js")).href);
 const { Orchestrator } = await import(pathToFileURL(path.join(root, "src/orchestrator.js")).href);
 const { parseXYZAtoms, summarizeStructure } = await import(pathToFileURL(path.join(root, "public/shared/structure.js")).href);
 
@@ -122,6 +129,32 @@ const result = await new Orchestrator(null).runAnalysis({
   moleculeText,
 });
 
+const coordinatesOnly = isCoordinatesOnly();
+const format = coordinatesOnly
+  ? "XYZ"
+  : parsed.type === "gaussian" ? "Gaussian" : parsed.type === "orca" ? "ORCA" : "unknown";
+
+// 只有坐标时，编排器仍会给出"通用计算化学输出"这类措辞 —— 对结构文件是错的，
+// 这里统一改成事实陈述，免得模型照抄一个并不存在的计算类型。
+const findings = coordinatesOnly
+  ? [
+      {
+        agent: "数据解析 Agent",
+        finding: `仅提供坐标，未包含计算输出：${result.structures[0]?.atomCount ?? 0} 个原子，无可提取的能量、频率或轨道指标。`,
+        warnings: ["文件里没有 SCF 能量 / 频率 / 轨道能量，不能回答任何与计算结果有关的问题。"],
+      },
+      ...result.agentFindings.slice(1),
+    ]
+  : result.agentFindings.map((item) => ({
+      agent: item.agent,
+      finding: item.finding,
+      warnings: item.warnings || [],
+    }));
+
+const summary = coordinatesOnly
+  ? `仅结构（${hillFormula(moleculeText) || `${result.structures[0]?.atomCount ?? 0} 个原子`}），未包含计算结果`
+  : result.summary;
+
 const output = {
   ok: true,
   skill: "chemclaw-analyze",
@@ -130,8 +163,8 @@ const output = {
 
   // 数字原样给，不预先格式化：模型引用时应当用这些值，而不是自己重算。
   metrics: {
-    format: parsed.type === "gaussian" ? "Gaussian" : parsed.type === "orca" ? "ORCA" : "unknown",
-    taskType: result.basicInfo?.taskType || null,
+    format,
+    taskType: coordinatesOnly ? null : result.basicInfo?.taskType || null,
     method: parsed.method || null,
     basis: parsed.basis || null,
     route: parsed.route || null,
@@ -150,9 +183,25 @@ const output = {
     thermo: parsed.thermo || {},
     normalTermination: Boolean(parsed.normalTermination),
     converged: Boolean(parsed.converged),
+    /** 明确的中止信号（Error termination / Job killed / aborting the run）。 */
+    aborted: Boolean(parsed.aborted),
+    errors: parsed.errors || [],
   },
 
-  fileDetails: buildFileDetails(text, parsed),
+  // 单位写死在这里，避免模型按字段名猜：轨道能量统一换算成 eV，
+  // 偶极矩统一换算成 Debye，能量保持源文件的 Hartree。
+  units: {
+    energy: "Hartree",
+    orbital: "eV",
+    dipole: "Debye",
+    frequency: "cm-1",
+    barrier: "kcal/mol（以文件标注为准）",
+  },
+
+  fileDetails: {
+    ...buildFileDetails(text, parsed),
+    ...(coordinatesOnly ? { format: "xyz", energyPointCount: 0, frequencyCount: 0 } : {}),
+  },
   structure: {
     frameCount: result.structures.length,
     atomCount: result.structures[0]?.atomCount ?? null,
@@ -160,19 +209,28 @@ const output = {
     formula: hillFormula(moleculeText),
   },
 
-  findings: result.agentFindings.map((item) => ({
-    agent: item.agent,
-    finding: item.finding,
-    warnings: item.warnings || [],
-  })),
-  warnings: (result.agentFindings[0]?.warnings || []).filter(Boolean),
+  findings,
+  warnings: (findings[0]?.warnings || []).filter(Boolean),
   explanations: result.agentFindings.find((item) => item.explanations)?.explanations || [],
-  learningGoals: result.learningGoals,
-  learningPath: result.learningPath,
-  quiz: result.quiz,
-  researchSuggestions: result.researchSuggestions,
-  literatureBenchmarks: result.literatureBenchmarks,
-  summary: result.summary,
+  // 只有坐标时，教学材料（学习路径/训练题）是通用模板，与数据无关，
+  // 直接不输出，免得模型转述"标注反应物、过渡态和产物"这种无根据的指导。
+  ...(coordinatesOnly
+    ? {
+        learningGoals: [],
+        learningPath: [],
+        quiz: [],
+        researchSuggestions: [],
+        literatureBenchmarks: [],
+        teachingNote: "该文件不含计算结果，已跳过教学材料生成。",
+      }
+    : {
+        learningGoals: result.learningGoals,
+        learningPath: result.learningPath,
+        quiz: result.quiz,
+        researchSuggestions: result.researchSuggestions,
+        literatureBenchmarks: result.literatureBenchmarks,
+      }),
+  summary,
 };
 
 process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

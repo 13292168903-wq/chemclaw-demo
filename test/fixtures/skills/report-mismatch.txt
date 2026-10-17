@@ -1,0 +1,4 @@
+本实验使用 B3LYP-D3BJ/def2-SVP 研究 Diels-Alder 反应机理。
+TS-1 存在一个虚频 -431.6 cm⁻¹，符合一阶鞍点特征。
+反应能垒为 18.6 kcal/mol。
+HOMO-LUMO gap 为 2.10 eV，说明前线轨道相互作用很弱。

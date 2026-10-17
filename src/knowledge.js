@@ -5,7 +5,19 @@ export const conceptCards = {
   imaginaryFrequency: {
     title: "虚频与过渡态验证",
     concept: "过渡态是势能面上的一阶鞍点，对反应坐标方向有一个负曲率，对应唯一的虚频。",
-    evidence: (freq) => freq ? `检出 ${freq} cm⁻¹ 虚频，符合一阶鞍点特征。需进一步确认振动模式对应成键/断键方向。` : "未检出虚频，可能不是过渡态，或需检查初始猜测结构。",
+    /**
+     * @param {number} freq 第一个虚频
+     * @param {number} count 虚频总数
+     *
+     * 旧实现只拿到第一个虚频就说"符合一阶鞍点特征"，于是有两个虚频的
+     * 结构也会被判成过渡态 —— 这是把"必要条件"讲成了"充分条件"。
+     */
+    evidence: (freq, count = 1) => {
+      if (count >= 2) {
+        return `检出 ${count} 个虚频（首个 ${freq} cm⁻¹）：这不是一阶鞍点，结构尚未收敛到驻点，需重新优化（或降低对称性、检查初始猜测）后再做频率分析。`;
+      }
+      return `检出 ${freq} cm⁻¹ 虚频，满足一阶鞍点的必要条件；仍需 IRC 或振动模式确认该虚频对应反应坐标。`;
+    },
     teaching: "引导学生理解虚频是过渡态的'必要条件'而非'充分条件'。单个虚频不能替代 IRC 验证。"
   },
   homoLumoGap: {
@@ -108,13 +120,23 @@ export const rubricDimensions = [
 export function buildLearningGoals(metrics) {
   const goals = [];
 
-  const imagCount = metrics.imaginaryFrequencies?.length || 0;
+  const imaginary = metrics.imaginaryFrequencies || [];
+  const hasFrequencyData = (metrics.frequencies || []).length > 0 || imaginary.length > 0;
+
+  // "没有频率数据"和"有频率但没有虚频"是两件事：
+  // 前者不能推出"稳定极小点"，后者才能。
   goals.push({
     concept: "过渡态验证",
-    evidence: imagCount > 0
-      ? `检出 ${metrics.imaginaryFrequencies[0]} cm⁻¹ 虚频`
-      : "未检出虚频",
-    outcome: "学生能够判断优化结构是否满足一阶鞍点特征，并说明 IRC 或振动动画验证的必要性。"
+    evidence: !hasFrequencyData
+      ? "文件未提供频率数据（无法判断是否为驻点）"
+      : imaginary.length >= 2
+        ? `检出 ${imaginary.length} 个虚频（${imaginary.join("、")} cm⁻¹），不是一阶鞍点`
+        : imaginary.length === 1
+          ? `检出 1 个虚频 ${imaginary[0]} cm⁻¹（一阶鞍点的必要条件）`
+          : "未检出虚频（频率数据存在）",
+    outcome: !hasFrequencyData
+      ? "先补做频率计算，才能讨论过渡态或驻点判据。"
+      : "学生能够判断优化结构是否满足一阶鞍点特征，并说明 IRC 或振动动画验证的必要性。"
   });
 
   const barrier = metrics.barrier ?? metrics.energySpan;
