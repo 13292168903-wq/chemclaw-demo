@@ -27,7 +27,11 @@ function openclawFields(cloud) {
     mode: "openclaw",
     openclawModel: cloud.model,
     openclawProvider: cloud.provider,
-    openclawSkill: cloud.skillUsed || null,
+    // 报告"请求了哪个技能"。实际是否命中由运行日志/toolSummary 佐证，
+    // 不再拿"已加载技能列表的第一个"冒充。
+    openclawSkill: cloud.skillRequested || null,
+    openclawSkillVerified: false,
+    openclawAvailableSkills: cloud.availableSkills || [],
     openclawDuration: cloud.durationMs,
   };
 }
@@ -110,6 +114,8 @@ export function createAnalyzer({ llm = null } = {}) {
             message: buildAnalyzePrompt(input),
             sessionId: `chemclaw-analyze-${Date.now()}`,
             timeout: OPENCLAW_TIMEOUT,
+            skill: "chemclaw-analyze",
+            fileLabel: "dataset.txt",
           }),
           rules.runAnalysis(input),
         ]);
@@ -186,7 +192,7 @@ export function createAnalyzer({ llm = null } = {}) {
           mode: "openclaw",
           model: cloud.model,
           provider: cloud.provider,
-          skill: cloud.skillUsed,
+          skill: cloud.skillRequested,
           answer: cloud.text,
         };
       } catch (error) {

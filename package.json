@@ -1,6 +1,6 @@
 {
   "name": "chemclaw-demo",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "description": "ChemClaw: 面向计算化学科研训练的多智能体教学助教",

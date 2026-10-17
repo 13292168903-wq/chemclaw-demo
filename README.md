@@ -134,12 +134,23 @@ http://localhost:5173
 
 ### 使用 OpenClaw（可选，接入后走赛事要求的 Agent 链路）
 
-两个技能已经随仓库提供（`skills/`），不需要手工拷贝：
+三步：装 CLI → 给 CLI 配模型凭据 → 装技能。
 
 ```bash
 npm install -g openclaw
-npm run install:skills          # 复制到 ~/.openclaw/workspace/skills/ 并写入仓库路径
+npm run install:skills        # 复制 skills/ 到 ~/.openclaw/workspace/skills/
+
+# 给 OpenClaw 自己的 agent 配一个模型（它不读本项目的 DEEPSEEK_API_KEY）
+echo "$DEEPSEEK_API_KEY" | openclaw models auth paste-api-key --provider deepseek
+# 指定本项目调用时用哪个模型（写进 .env，见 .env.example）
+# CHEMCLAW_OPENCLAW_MODEL=deepseek/deepseek-v4-flash
 ```
+
+**Windows 说明**：npm 全局只生成 `openclaw.cmd`，而 Node 20+ 不允许
+`execFile` 直接执行 `.cmd`（会 `ENOENT` / `spawn EINVAL`），这也是早期版本
+明明装了 CLI 却一直报"未安装"的原因。`src/openclaw-cli.js` 会解析 shim 里
+真正的 JS 入口，用 `node <entry>` 调用，不走 shell，因此带中文/引号/换行的
+消息也不会被 cmd 吃掉。需要覆盖时可用 `CHEMCLAW_OPENCLAW_BIN` 指定入口。
 
 技能脚本复用仓库内的解析器与批改逻辑，因此同一份文件在网页和 OpenClaw
 对话里得到的数字一致。也可以单独运行，用于排查链路问题：
@@ -153,9 +164,14 @@ node skills/chemclaw-grade/scripts/grade.mjs <报告.txt> --metrics <analyze 输
 **真实装了的**技能（不再是硬编码的两个名字）：
 
 ```json
-{"agent":"local","openclaw":false,"skills":[],"skillsReady":false,
- "openclawReason":"未安装 openclaw CLI（PATH 中找不到）"}
+{"agent":"openclaw","openclaw":true,
+ "skills":["chemclaw-analyze","chemclaw-grade"],"skillsReady":true}
 ```
+
+实测（本机，51 行样例）：`/api/analyze` 走 OpenClaw 约 **50s**，返回 3.3k 字
+叙述，同时保留本地解析出的 `gap 3.34 eV / 能垒 18.6 kcal/mol`；`/api/grade`
+约 **35s**。`openclawSkill` 只表示"请求了哪个技能"，是否真的命中由运行日志
+佐证（`openclawSkillVerified` 恒为 false，不做无根据的断言）。
 
 ### 测试
 
@@ -190,9 +206,30 @@ npm run report  # 跑全部用例并生成 docs/测试报告.png（需要本机�
 - **AI**：OpenClaw 框架（Qwen3_6）→ 降级 DeepSeek / OpenAI API → 降级本地规则
 - **3D 渲染**：Mol*（按需加载）+ 2D 投影兜底（无 WebGL 时）
 - **图表**：手写 SVG（能量曲线 / 优化轨迹 / 红外光谱）
-- **测试**：`node:test`（78 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 15 项技能评估断言（12 份夹具））
+- **测试**：`node:test`（83 个用例：解析器 / 结构几何 / OpenClaw 适配 / .env / LLM 契约 / 编排模式 / 技能脚本 / 15 项技能评估断言（12 份夹具））
 
 ## 开发报告
+
+### v2.5（2026-10-17）— 真正走通 OpenClaw
+
+**Windows 下 CLI 不可达（根因）**
+- npm 全局只生成 `openclaw.cmd`；`execFile("openclaw")` → `ENOENT`，
+  `execFile("openclaw.cmd")` → 同步抛 `spawn EINVAL`（Node 20+ 安全策略）。
+  结果：装了 CLI，探活仍报"未安装"，整条链路永远走不到
+- 新增 `src/openclaw-cli.js`：解析 npm shim 里的 JS 入口，用
+  `node <entry>` 调用，不经 shell；支持 `CHEMCLAW_OPENCLAW_BIN` 覆盖
+
+**模型与技能**
+- 支持 `CHEMCLAW_OPENCLAW_MODEL` 指定单次调用模型（OpenClaw 全局默认是本机内网 Qwen）
+- 模型认证/网络失败时，把 stderr 里的真实原因带进错误信息（原来只说"没有返回可解析的 JSON"）
+- `skillUsed` 不再拿"已加载技能列表的第一个"冒充：改为 `skillRequested` +
+  `availableSkills`，并显式标注 `openclawSkillVerified: false`
+
+**实测**
+- `/api/status`：`agent=openclaw`、`skillsReady=true`、两个技能都在
+- `/api/analyze`：52.6s，`chemclaw-analyze`，3.3k 字叙述，本地数字仍是 `3.34 eV / 18.6 kcal/mol`
+- `/api/grade`：35s，`chemclaw-grade`，分数与四维度同时返回
+- 测试 78 → 83（新增 shim 解析 5 项）
 
 ### v2.4（2026-10-17）— 技能评估驱动的修订
 

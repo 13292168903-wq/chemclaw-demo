@@ -20,13 +20,9 @@
  * comes from the OpenClaw agent framework, not from its own LLM calls.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import path from "node:path";
+import { execOpenClaw, resolveOpenClawCli } from "./openclaw-cli.js";
 
-const execFileAsync = promisify(execFile);
-
-const OPENCLAW_BIN = "openclaw";
 const DEFAULT_TIMEOUT = 180_000; // 3 min — LLM analysis can be slow
 const MAX_INPUT_CHARS = 150_000;  // Write up to 150K to the temp workspace file
 const INLINE_MESSAGE_LIMIT = 4_000; // 超过这个长度就落盘，避免命令行参数过长
@@ -96,6 +92,9 @@ function smartTruncate(text, maxChars) {
 /**
  * Probe whether the `openclaw` CLI is usable.
  *
+ * Windows 上不能直接 execFile("openclaw")：npm 全局只生成 openclaw.cmd，
+ * 而 Node 20+ 禁止无 shell 执行 .cmd。定位与调用统一交给 openclaw-cli.js。
+ *
  * Deliberately *uncached*: `src/runtime.js` owns the cache so that the status
  * endpoint and the request path can never disagree about which mode we are in.
  *
@@ -104,18 +103,29 @@ function smartTruncate(text, maxChars) {
  *   直接进 /api/status，演示现场能当场说清为什么没走 OpenClaw。
  */
 export async function probeOpenClaw() {
+  const cli = resolveOpenClawCli();
+  if (!cli) {
+    return {
+      available: false,
+      reason: "未找到 openclaw 可执行入口（未安装，或 npm 全局 shim 解析失败）",
+      version: null,
+    };
+  }
+
   try {
-    const { stdout } = await execFileAsync(OPENCLAW_BIN, ["--version"], { timeout: 5_000 });
+    const { stdout } = await execOpenClaw(["--version"], { timeout: 8_000 });
     const text = String(stdout || "").trim();
     if (!/openclaw/i.test(text)) {
       return { available: false, reason: "openclaw --version 输出无法识别", version: null };
     }
     const version = (text.match(/v?(\d+\.\d+\.\d+[\w.-]*)/) || [])[1] || text.split(/\s+/).pop() || "unknown";
-    return { available: true, reason: null, version };
+    return { available: true, reason: null, version, entry: cli.display };
   } catch (error) {
-    if (error?.code === "ENOENT") return { available: false, reason: "未安装 openclaw CLI（PATH 中找不到）", version: null };
+    if (error?.code === "ENOENT" || error?.code === "EINVAL") {
+      return { available: false, reason: `openclaw 入口无法启动（${error.code}）：${cli.display}`, version: null };
+    }
     if (error?.killed || error?.signal) return { available: false, reason: "openclaw 探测超时", version: null };
-    return { available: false, reason: `openclaw 不可用：${truncate(error?.message || String(error), 120)}`, version: null };
+    return { available: false, reason: `openclaw 不可用：${truncate(error?.message || String(error), 160)}`, version: null };
   }
 }
 
@@ -178,11 +188,11 @@ function truncate(text, max) {
  * @param {string} options.message  — The user message / prompt
  * @param {string} options.sessionId — Session ID for conversation continuity
  * @param {number} [options.timeout] — Timeout in ms
- * @param {string} [options.skill]  — 大文本落盘时该点名哪个技能（默认 chemclaw-analyze）
+ * @param {string} [options.skill]  — 大文本落盘时点名哪个技能，以及回报"请求了哪个技能"
  * @param {string} [options.fileLabel] — 落盘文件名（dataset.txt / report.txt）
- * @returns {Promise<{text: string, durationMs: number, model: string, provider: string, skillUsed: string|null, raw: object}>}
+ * @returns {Promise<{text: string, durationMs: number, model: string, provider: string, skillRequested: string|null, skillUsed: null, availableSkills: string[], raw: object}>}
  */
-export async function callOpenClawAgent({ message, sessionId, timeout, skill = "chemclaw-analyze", fileLabel = "dataset.txt" }) {
+export async function callOpenClawAgent({ message, sessionId, timeout, skill = null, fileLabel = "dataset.txt" }) {
   if (!message || message.trim().length === 0) {
     throw new Error("Empty message");
   }
@@ -205,7 +215,7 @@ export async function callOpenClawAgent({ message, sessionId, timeout, skill = "
       const inputFile = path.join(workspaceDir, fileLabel);
       const content = smartTruncate(message, MAX_INPUT_CHARS).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
       await fs.writeFile(inputFile, content, "utf-8");
-      safeMessage = `请使用 ${skill} 技能分析文件: ${inputFile}`;
+      safeMessage = `请使用 ${skill || "chemclaw-analyze"} 技能分析文件: ${inputFile}`;
     }
 
     const args = [
@@ -216,29 +226,42 @@ export async function callOpenClawAgent({ message, sessionId, timeout, skill = "
       "--json",
       "--timeout", String(Math.floor((timeout || DEFAULT_TIMEOUT) / 1000)),
     ];
+    // 模型可以覆盖：OpenClaw 的默认模型是用户全局配置（本机是内网 Qwen），
+    // 演示机不一定连得上。用 CHEMCLAW_OPENCLAW_MODEL 指定一个可用的。
+    const modelOverride = process.env.CHEMCLAW_OPENCLAW_MODEL;
+    if (modelOverride) args.push("--model", modelOverride);
 
     let stdout;
+    let stderr = "";
     try {
-      ({ stdout } = await execFileAsync(OPENCLAW_BIN, args, {
+      ({ stdout, stderr } = await execOpenClaw(args, {
         timeout: (timeout || DEFAULT_TIMEOUT) * 2,
         maxBuffer: 5 * 1024 * 1024,
-        env: { ...process.env },
       }));
     } catch (error) {
       throw describeExecError(error, timeout);
     }
 
-    const data = parseAgentJson(stdout);
+    let data;
+    try {
+      data = parseAgentJson(stdout);
+    } catch (error) {
+      // openclaw 在模型认证/网络失败时仍然 exit 0，只把错误写到 stderr。
+      // 不把这段带出来，界面只会看到"没有返回可解析的 JSON"。
+      const hint = truncate(String(stderr || "").split(/\r?\n/).filter((line) => /error|Error|fail|auth/i.test(line)).slice(-2).join(" "), 240);
+      if (hint) error.message = `${error.message}：${hint}`;
+      throw error;
+    }
 
     const payloads = data.payloads || [];
     const meta = data.meta || {};
     const agentMeta = meta.agentMeta || {};
 
-    // Detect which skill was triggered
+    // Detect which skill was available in this run.
     const toolSummary = meta.toolSummary || {};
-    const skillsUsed = (meta.systemPromptReport?.skills?.entries || [])
-      .filter(s => s.name.startsWith("chemclaw"))
-      .map(s => s.name);
+    const chemclawSkills = (meta.systemPromptReport?.skills?.entries || [])
+      .filter((s) => s.name.startsWith("chemclaw"))
+      .map((s) => s.name);
 
     // Use first payload text as the analysis (may include thinking; we clean below)
     const payload = payloads[0] || {};
@@ -263,7 +286,13 @@ export async function callOpenClawAgent({ message, sessionId, timeout, skill = "
       durationMs: meta.durationMs || 0,
       model: agentMeta.model || "unknown",
       provider: agentMeta.provider || "unknown",
-      skillUsed: skillsUsed.length > 0 ? skillsUsed[0] : null,
+      // 注意：这不是"实际触发了哪个技能"。systemPromptReport.skills 列的是
+      // 本次运行**加载了哪些**技能（本机两个都装，顺序固定），取 [0] 会让
+      // 批改请求也显示 chemclaw-analyze。这里只报"请求了哪个"，
+      // 是否真的命中由 toolSummary 佐证，不再猜。
+      skillRequested: skill || null,
+      skillUsed: null,
+      availableSkills: chemclawSkills,
       toolsCalled: toolSummary.tools || [],
       usage: agentMeta.usage || {},
       raw: data,
@@ -283,8 +312,9 @@ export async function callOpenClawAgent({ message, sessionId, timeout, skill = "
 /** 把 execFile 的失败翻译成能看懂的原因，而不是裸 ENOENT。 */
 function describeExecError(error, timeout) {
   const wrapped = new Error();
-  if (error?.code === "ENOENT") {
-    wrapped.message = "未安装 openclaw CLI（PATH 中找不到）";
+  const cli = resolveOpenClawCli();
+  if (error?.code === "ENOENT" || error?.code === "EINVAL" || error?.code === "openclaw-not-found") {
+    wrapped.message = `找不到可用的 openclaw 入口${cli ? `（${cli.display}）` : ""}`;
     wrapped.code = "openclaw-not-installed";
   } else if (error?.killed || error?.signal === "SIGTERM") {
     wrapped.message = `openclaw 超时（>${Math.round((timeout || DEFAULT_TIMEOUT) / 1000)}s）`;
