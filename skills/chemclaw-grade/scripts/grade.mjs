@@ -111,7 +111,9 @@ function checkConsistency(report, metrics) {
     {
       field: "gap",
       label: "HOMO-LUMO gap",
-      regex: /(?:HOMO[\s\-–]*LUMO|gap|能隙|能级差)[^\d\-]{0,24}(-?\d+(?:\.\d+)?)\s*(eV|hartree)?/i,
+      // 数字必须自带单位，且前面不能粘着字母/斜杠 —— 否则 "B3LYP"、"def2-SVP"
+      // 里的数字会被当成报告值（"gap 由 B3LYP/def2-SVP 计算得 3.34 eV" 曾被抓成 3）。
+      regex: /(?:HOMO[\s\-–]*LUMO|gap|能隙|能级差)[^\n]{0,40}?(?<![\w.\-/])(\d+(?:\.\d+)?)\s*(eV|hartree)/i,
       computed: Number.isFinite(metrics.gap) ? metrics.gap : null,
       unit: "eV",
       tolerance: (value) => Math.max(0.05, Math.abs(value) * 0.05),
@@ -119,7 +121,7 @@ function checkConsistency(report, metrics) {
     {
       field: "barrier",
       label: "能垒",
-      regex: /(?:能垒|活化能|activation\s*barrier|barrier)[^\d\-]{0,24}(-?\d+(?:\.\d+)?)\s*(kcal\/mol|kJ\/mol)?/i,
+      regex: /(?:能垒|活化能|activation\s*barrier|barrier)[^\n]{0,40}?(?<![\w.\-/])(\d+(?:\.\d+)?)\s*(kcal\/mol|kj\/mol)/i,
       computed: Number.isFinite(metrics.barrier) ? metrics.barrier : null,
       unit: "kcal/mol",
       tolerance: (value) => Math.max(0.5, Math.abs(value) * 0.05),
@@ -127,7 +129,7 @@ function checkConsistency(report, metrics) {
     {
       field: "imaginaryFrequency",
       label: "虚频",
-      regex: /虚频[^\d\-]{0,24}(-?\d+(?:\.\d+)?)\s*(cm-1|cm⁻¹|cm\^-1)?/i,
+      regex: /虚频[^\n]{0,40}?(?<![\w.\-/])(-?\d+(?:\.\d+)?)\s*(cm-1|cm⁻¹|cm\^-1)/i,
       computed: Array.isArray(metrics.imaginaryFrequencies) && metrics.imaginaryFrequencies.length
         ? metrics.imaginaryFrequencies
         : null,
@@ -141,11 +143,18 @@ function checkConsistency(report, metrics) {
     const match = report.match(spec.regex);
     if (!match) continue;
 
-    const reportValue = Number.parseFloat(match[1]);
+    let reportValue = Number.parseFloat(match[1]);
     if (!Number.isFinite(reportValue)) continue;
 
     const unitInReport = (match[2] || "").toLowerCase();
     const computed = spec.computed;
+    const conversionNote = [];
+
+    // kJ/mol 的报告值先换成 kcal/mol，再和计算结果比
+    if (unitInReport === "kj/mol" && spec.unit === "kcal/mol") {
+      reportValue = Number((reportValue / 4.184).toFixed(3));
+      conversionNote.push("报告用 kJ/mol，已换算为 kcal/mol 后比较");
+    }
 
     if (computed === null) {
       items.push({
@@ -173,6 +182,7 @@ function checkConsistency(report, metrics) {
     items.push({
       field: spec.field, label: spec.label, reportValue, computedValue: computed,
       unit: spec.unit, status: matchFound ? "match" : "mismatch",
+      ...(conversionNote.length ? { note: conversionNote.join("；") } : {}),
     });
   }
 

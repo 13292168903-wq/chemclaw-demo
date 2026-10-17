@@ -1,0 +1,2 @@
+本工作用 B3LYP/def2-SVP 计算得到 HOMO-LUMO gap 为 3.34 eV。
+反应能垒 18.6 kcal/mol，TS-1 只有一个虚频 -431.6 cm⁻¹。

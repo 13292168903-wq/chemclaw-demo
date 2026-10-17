@@ -1,0 +1,22 @@
+ Entering Gaussian System, Link 0=g16
+
+ #p opt freq b3lyp/6-31g(d)
+
+ Barrier reported in kJ/mol (常见于国内组会材料)
+
+ 0 1
+ C   0.000000    0.000000    0.000000
+ H   1.090000    0.000000    0.000000
+ H  -0.363000    1.028000    0.000000
+
+
+ SCF Done:  E(RB3LYP) =  -40.4781234     A.U. after   14 cycles
+
+ Activation barrier (ZPE-corrected): 78.0 kJ/mol
+
+ Harmonic frequencies (cm**-1), IR intensities (KM/Mole):
+                      1                      2                      3
+ Frequencies --   -512.3341                188.7712               1101.3398
+ IR Inten    --     42.1123                 31.7781                  8.1123
+
+ Normal termination of Gaussian 16

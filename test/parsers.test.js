@@ -173,3 +173,25 @@ test("ORCA: TERMINATED NORMALLY 被识别为正常结束，零频不计入振动
   assert.deepEqual(parsed.frequencies, [1638.42]);
   assert.ok(Math.abs(parsed.dipole - 4.7022) < 1e-4, `dipole=${parsed.dipole}`);
 });
+
+test("Gaussian: 多行 Alpha occ 必须取最后一行的最后一个值作为 HOMO", () => {
+  // 占据轨道超过 5 个就会折行；取第一行会把 HOMO 算成 -19.14 Ha 之类，
+  // 于是 gap 变成两三百 eV 这种一眼假的数字。
+  const log = [
+    "#p sp b3lyp/6-31g(d)",
+    " Alpha  occ. eigenvalues --  -19.14  -10.22   -1.00   -0.60   -0.45",
+    " Alpha  occ. eigenvalues --   -0.40   -0.35",
+    " Alpha virt. eigenvalues --    0.12    0.30    0.60",
+  ].join("\n");
+
+  const parsed = parseGaussian(log);
+  assert.ok(Math.abs(parsed.homo - -9.5240) < 1e-4, `homo=${parsed.homo}`); // -0.35 Ha
+  assert.ok(Math.abs(parsed.lumo - 3.2654) < 1e-4, `lumo=${parsed.lumo}`); // 0.12 Ha
+  assert.ok(Math.abs(parsed.gap - 12.7894) < 1e-4, `gap=${parsed.gap}`);
+});
+
+test("Gaussian: 能垒标注 kJ/mol 时换算为 kcal/mol", () => {
+  const parsed = parseGaussian("#p opt\n Activation barrier: 78.0 kJ/mol\n");
+  assert.ok(Math.abs(parsed.barrier - 18.642) < 1e-3, `barrier=${parsed.barrier}`);
+  assert.equal(parsed.barrierUnit, "kJ/mol→kcal/mol");
+});

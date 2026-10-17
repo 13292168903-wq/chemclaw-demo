@@ -36,7 +36,15 @@ node skills/chemclaw-analyze/scripts/analyze.mjs <计算输出文件> [--xyz <�
 4. `null` 表示"脚本没从文件里解析到"，**不是 0，也不是"该性质不存在"**。
    要写"未解析到 / 无法判断"，不要写"没有能垒""gap 为 0""偶极矩为零"。
 5. 引用数字时带上字段名与单位来源，例如"`gap` = 3.34（脚本换算为 eV）"，
-   而不是裸写一个数字。单位见输出里的 `units` 字段，不要按字段名猜。
+   而不是裸写一个数字。
+6. **`units` 只是展示单位，不代表源文件单位一定被校验过**，看 `unitsSource`：
+   - `"Hartree→eV"` / `"kJ/mol→kcal/mol"` / `"au→Debye"`：脚本已换算，可直接按 `units` 讲。
+   - `"as-written"`：脚本原样透传，**单位未校验**。典型来源是文件里显式写的
+     `HOMO = -0.24`、`Dipole moment = 1.2` 这类行。处理方式：
+     量级在 1–30 之间（像 eV）时可按 eV 引述，但要注明"源文件未标单位"；
+     量级小于 1（像 Hartree）时必须写"原始值 X（单位未校验，可能是 Hartree）"，不得直接说 eV。
+7. 数值合理性自检：`gap` 或 `|homo|` 超过 30（eV 口径）时，先说明"轨道能量解析可疑，
+   不作为结论"。苯的 gap 在 5–10 eV 量级，几百 eV 一定是解析出了问题。
 
 ## 输出契约（脚本 stdout）
 
@@ -61,7 +69,8 @@ node skills/chemclaw-analyze/scripts/analyze.mjs <计算输出文件> [--xyz <�
     "normalTermination": true, "converged": false,
     "aborted": false, "errors": []
   },
-  "units": { "energy": "Hartree", "orbital": "eV", "dipole": "Debye", "frequency": "cm-1" },
+  "units": { "energy": "Hartree", "orbital": "eV", "dipole": "Debye", "frequency": "cm-1", "barrier": "kcal/mol" },
+  "unitsSource": { "orbital": "Hartree→eV", "dipole": "as-written", "barrier": "kcal/mol" },
   "structure": { "frameCount": 1, "atomCount": 12, "formula": "C6H6" },
   "fileDetails": { "...": "行数、字节数、能量点/频率/结构帧计数" },
   "findings": [{ "agent": "数据解析 Agent", "finding": "...", "warnings": [] }],
@@ -103,8 +112,10 @@ node skills/chemclaw-analyze/scripts/analyze.mjs <计算输出文件> [--xyz <�
 - **极小点**：`frequencyCount > 0` 且 `imaginaryFrequencies` 为空。
   `frequencyCount === 0` 只是"没有频率数据"，**不能**读作"无虚频 → 稳定结构"。
 - **虚频 ≥ 2**：结构尚未收敛到驻点，不是一阶鞍点。要把**全部**虚频列出来，不能只报第一个。
-- **能垒**：10–25 kcal/mol 属于室温可讨论区间；引用时必须带单位（kcal/mol）。
-  `barrier` 为 `null` 时说明"单份输出给不出能垒，至少需要反应物与过渡态两个能量点"。
+- **能垒**：10–25 kcal/mol 属于室温可讨论区间。文件里写 kJ/mol 时脚本已换算成 kcal/mol
+  （`unitsSource.barrier` 会标记 `kJ/mol→kcal/mol`）；`as-written` 表示文件没标单位，
+  引用时应说"按 kcal/mol 理解，文件未标注"。`barrier` 为 `null` 时说明"单份输出给不出能垒，
+  至少需要反应物与过渡态两个能量点"。
 - **`converged: false` 不等于"没收敛"**。脚本只认 `Maximum Force ... YES` /
   `Item ... Value ... Threshold ... Converged` 这类收敛表；文件里没有收敛表时它就是 `false`，
   含义是"没找到判据"。当 `normalTermination: true` 且 `converged: false` 时，固定措辞为

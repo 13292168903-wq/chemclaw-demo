@@ -120,10 +120,15 @@ export function parseGaussian(text) {
   result.lumo = matchedNumber(text.match(/(?:^|\n)\s*LUMO\s*(?:energy)?\s*[:=]\s*(-?\d+(?:\.\d+)?)/im));
 
   // 再尝试 Gaussian Alpha occ/virt 格式（单位 Hartree，需换成 eV）
+  //
+  // occ 本征值常按每行 5 个折成多行，HOMO 是**最后一行**的最后一个值。
+  // 旧实现用 text.match() 只取第一行，占据轨道超过 5 个的常规日志会算错 HOMO
+  // （并且错得很大：会出现 gap 200 eV 这种一眼假的数字）。这里取最后一个
+  // occ 块的最后一个值、最后一个 virt 块的第一个值。
   if (result.homo === undefined) {
-    const alphaOccMatch = text.match(/Alpha\s+occ\. eigenvalues\s+--\s+(.+)/i);
-    if (alphaOccMatch) {
-      const values = alphaOccMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
+    const occBlocks = [...text.matchAll(/Alpha\s+occ\. eigenvalues\s+--\s+([^\n]+)/gi)];
+    if (occBlocks.length) {
+      const values = occBlocks[occBlocks.length - 1][1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
       if (values.length > 0) {
         result.homo = hartreeToEv(values[values.length - 1]);
         result.orbitalUnit = "Hartree→eV";
@@ -131,9 +136,9 @@ export function parseGaussian(text) {
     }
   }
   if (result.lumo === undefined) {
-    const alphaVirtMatch = text.match(/Alpha\s+virt\. eigenvalues\s+--\s+(.+)/i);
-    if (alphaVirtMatch) {
-      const values = alphaVirtMatch[1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
+    const virtBlocks = [...text.matchAll(/Alpha\s+virt\. eigenvalues\s+--\s+([^\n]+)/gi)];
+    if (virtBlocks.length) {
+      const values = virtBlocks[virtBlocks.length - 1][1].trim().split(/\s+/).map(parseFloat).filter(Number.isFinite);
       if (values.length > 0) {
         result.lumo = hartreeToEv(values[0]);
         result.orbitalUnit = "Hartree→eV";
@@ -189,8 +194,19 @@ export function parseGaussian(text) {
   // 真实文件里常写成 "Activation barrier (ZPE-corrected): 18.6 kcal/mol"，
   // 旧正则要求 Barrier 后紧跟 : 或 =，于是仓库自带的样例文件里这个字段
   // 一直没被解析出来（界面只是碰巧没显示，没有报错）。
-  const barrierMatch = text.match(/(?:Activation\s*barrier|Barrier)[^:\n]{0,40}?[:=]\s*(-?\d+(?:\.\d+)?)/i);
-  if (barrierMatch) result.barrier = parseFloat(barrierMatch[1]);
+  // 单位也要读：写 78.0 kJ/mol 时若直接当 kcal/mol 讲，误差 4.2 倍。
+  const barrierMatch = text.match(/(?:Activation\s*barrier|Barrier)[^:\n]{0,40}?[:=]\s*(-?\d+(?:\.\d+)?)\s*(kcal\s*\/?\s*mol|kJ\s*\/?\s*mol)?/i);
+  if (barrierMatch) {
+    const raw = parseFloat(barrierMatch[1]);
+    const unit = (barrierMatch[2] || "").toLowerCase().replace(/\s/g, "");
+    if (unit.includes("kj")) {
+      result.barrier = Number((raw / 4.184).toFixed(3));
+      result.barrierUnit = "kJ/mol→kcal/mol";
+    } else {
+      result.barrier = raw;
+      if (unit) result.barrierUnit = unit;
+    }
+  }
 
   // 吸附能
   const adsMatch = text.match(/Adsorption\s*energy\s*[:=]\s*(-?\d+(?:\.\d+)?)/i);

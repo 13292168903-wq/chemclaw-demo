@@ -55,7 +55,10 @@ node skills/chemclaw-grade/scripts/grade.mjs <报告文件> --metrics analysis.j
       { "field": "gap", "label": "HOMO-LUMO gap", "reportValue": 2.1,
         "computedValue": 3.34, "unit": "eV", "status": "mismatch" }
     ],
-    "mismatches": [ "…同上…" ],
+    "mismatches": [
+      { "field": "gap", "label": "HOMO-LUMO gap", "reportValue": 2.1,
+        "computedValue": 3.34, "unit": "eV", "status": "mismatch" }
+    ],
     "note": "同单位下：报告值四舍五入到计算值相同小数位后相等，或相对偏差 ≤ 5%，视为一致。"
   },
   "disclaimer": "分数由关键词与结构检查得出，用于提示学生缺什么，不代表教师给出的成绩。"
@@ -64,6 +67,9 @@ node skills/chemclaw-grade/scripts/grade.mjs <报告文件> --metrics analysis.j
 
 `consistency.status` 只有四种：`match`（一致）、`mismatch`（同单位但超出容差）、
 `unit-mismatch`（报告与计算用的单位不同，需先统一）、`uncheckable`（计算结果里没有这个指标）。
+
+脚本只核对**带单位**的数字（`eV`、`kcal/mol`、`cm⁻¹` 等）。报告写"gap 约为 3.3"而不带单位时，
+`items` 里不会出现该指标 —— 这不是"一致"，是"没核对到"。
 
 ## 回复规则
 
@@ -77,7 +83,10 @@ node skills/chemclaw-grade/scripts/grade.mjs <报告文件> --metrics analysis.j
    - `status: "unit-mismatch"` → 先统一单位再比，不要直接判"矛盾"。
    - `status: "uncheckable"` → 说"报告中提到的指标在计算结果里没有解析到，无法核对"。
 4. **不要自己再定容差。** 脚本已按"同单位、四舍五入到相同小数位相等，或相对偏差 ≤ 5%"判断，
-   不要因为 3.3 与 3.34 就判成矛盾。
+   不要因为 3.3 与 3.34 就判成矛盾。报告写 kJ/mol 时脚本会先换算成 kcal/mol 再比，
+   item 里带 `note` 说明换算过。
+5. 若 `reportValue` 明显不是报告中该指标后面的那个数（例如"由 B3LYP/def2-SVP 计算得 3.34 eV"
+   被取成了 3），**以报告原文为准**，并说明"脚本取数位置可疑，未按 mismatch 转述"。
 5. `strengths` 里的"引用了数值数据""标注了能量/频率单位"只证明**格式**，不证明数值正确。
    未做核对时，必须改写为"有数值与单位，但未与计算结果核对"，且不得把 `数据解析` 维度
    的得分当作数值准确性的评价。

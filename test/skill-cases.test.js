@@ -162,6 +162,31 @@ test("用例8c: 未传 --metrics 时明确声明未做核对", async () => {
   assert.match(output.consistency.reason, /未做数值一致性核对/);
 });
 
+test("用例8d: 基组/方法名里的数字不能被当成报告值", async () => {
+  // "由 B3LYP/def2-SVP 计算得到 gap 为 3.34 eV" 旧正则会把 B3LYP 的 3 当成报告值。
+  const analysis = await runJson(analyzeScript, [path.join(projectRoot, "data", "samples", "diels-alder-ts.log")]);
+  const dir = mkdtempSync(path.join(tmpdir(), "chemclaw-consistency-"));
+  const metricsFile = path.join(dir, "analysis.json");
+  writeFileSync(metricsFile, JSON.stringify(analysis), "utf8");
+
+  try {
+    const output = await runJson(gradeScript, [fixture("report-basis.txt"), "--metrics", metricsFile]);
+    assert.deepEqual(output.consistency.mismatches, [], JSON.stringify(output.consistency));
+    const gap = output.consistency.items.find((item) => item.field === "gap");
+    assert.equal(gap.reportValue, 3.34);
+    assert.equal(gap.status, "match");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("用例9: 能垒写成 kJ/mol 时换算后再核对", async () => {
+  const analysis = await runJson(analyzeScript, [fixture("barrier-kj.log")]);
+  // 78.0 kJ/mol ≈ 18.64 kcal/mol
+  assert.ok(Math.abs(analysis.metrics.barrier - 18.642) < 1e-3, `barrier=${analysis.metrics.barrier}`);
+  assert.equal(analysis.unitsSource.barrier, "kJ/mol→kcal/mol");
+});
+
 test("用例9: 同一输入两次运行结果完全一致（可复现）", async () => {
   const first = await runJson(analyzeScript, [fixture("no-orbitals.log")]);
   const second = await runJson(analyzeScript, [fixture("no-orbitals.log")]);

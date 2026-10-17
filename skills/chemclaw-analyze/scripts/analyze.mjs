@@ -195,7 +195,15 @@ const output = {
     orbital: "eV",
     dipole: "Debye",
     frequency: "cm-1",
-    barrier: "kcal/mol（以文件标注为准）",
+    barrier: "kcal/mol",
+  },
+  // unitsSource 说明"这个单位是换算来的，还是照文件原样抄的"。
+  // as-written 表示脚本没校验过源单位：显式 `HOMO = -0.24` 这种行没法判断
+  // 是 eV 还是 Hartree，只能原样给出，由回复时注明"单位未校验"。
+  unitsSource: {
+    orbital: parsed.orbitalUnit || "as-written",
+    dipole: parsed.dipoleUnit || "as-written",
+    barrier: parsed.barrierUnit || "as-written",
   },
 
   fileDetails: {

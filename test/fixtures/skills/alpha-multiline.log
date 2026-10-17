@@ -1,0 +1,16 @@
+ Entering Gaussian System, Link 0=g16
+
+ #p sp b3lyp/6-31g(d)
+
+ Benzene, population analysis printed over two lines
+
+ 0 1
+
+
+ SCF Done:  E(RB3LYP) =  -232.1234567     A.U. after   12 cycles
+
+ Alpha  occ. eigenvalues --  -19.14  -10.22   -1.00   -0.60   -0.45
+ Alpha  occ. eigenvalues --   -0.40   -0.35
+ Alpha virt. eigenvalues --    0.12    0.30    0.60
+
+ Normal termination of Gaussian 16
