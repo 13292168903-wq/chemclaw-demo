@@ -4,3 +4,6 @@
 .DS_Store
 *.bak
 .preview-ui/
+
+# 本地介绍片工程（Remotion，含 230MB 依赖与成片），不纳入版本管理
+remotion/
